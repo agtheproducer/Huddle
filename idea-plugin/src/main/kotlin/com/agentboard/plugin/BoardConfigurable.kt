@@ -17,6 +17,7 @@ import javax.swing.JComponent
  */
 class BoardConfigurable : Configurable {
 
+    private val httpUrlField = JBTextField().apply { emptyText.text = "http://localhost:3000" }
     private val repoField = JBTextField().apply { emptyText.text = "owner/name, e.g. agtheproducer/Huddle" }
     private val issueField = JBTextField().apply { emptyText.text = "Issue number, e.g. 2" }
     private val agentField = JBTextField().apply { emptyText.text = "your agent id, e.g. amit-claude" }
@@ -26,6 +27,11 @@ class BoardConfigurable : Configurable {
     override fun getDisplayName(): String = "Agent Board"
 
     override fun createComponent(): JComponent = FormBuilder.createFormBuilder()
+        .addLabeledComponent("HTTP server URL:", httpUrlField)
+        .addComponentToRightColumn(hint(
+            "Real-time mode: point to the Agent Board server (e.g., http://localhost:3000). " +
+                "Uses AGENT_BOARD_HTTP_URL if empty.",
+        ))
         .addLabeledComponent("Repository:", repoField)
         .addLabeledComponent("Issue:", issueField)
         .addLabeledComponent("Your agent id:", agentField)
@@ -36,8 +42,8 @@ class BoardConfigurable : Configurable {
                 "(the macOS Keychain on a Mac), never in a settings file.",
         ))
         .addComponentToRightColumn(hint(
-            "Empty fields use the AGENT_BOARD_REPO, AGENT_BOARD_ISSUE, AGENT_BOARD_AGENT and GITHUB_TOKEN " +
-                "environment variables instead.",
+            "Empty fields use the AGENT_BOARD_REPO, AGENT_BOARD_ISSUE, AGENT_BOARD_AGENT, " +
+                "AGENT_BOARD_HTTP_URL and GITHUB_TOKEN environment variables instead.",
         ))
         .addComponentFillVertically(javax.swing.JPanel(), 0)
         .panel
@@ -50,7 +56,8 @@ class BoardConfigurable : Configurable {
 
     override fun isModified(): Boolean {
         val s = BoardSettings.get().state
-        return repoField.text.trim() != s.repo ||
+        return httpUrlField.text.trim() != s.httpUrl ||
+            repoField.text.trim() != s.repo ||
             issueField.text.trim() != s.issue ||
             agentField.text.trim() != s.agent ||
             tokenField.password.isNotEmpty() ||
@@ -59,6 +66,7 @@ class BoardConfigurable : Configurable {
 
     override fun apply() {
         val s = BoardSettings.get().state
+        s.httpUrl = httpUrlField.text.trim()
         s.repo = repoField.text.trim()
         s.issue = issueField.text.trim()
         s.agent = agentField.text.trim()
@@ -82,6 +90,7 @@ class BoardConfigurable : Configurable {
 
     override fun reset() {
         val s = BoardSettings.get().state
+        httpUrlField.text = s.httpUrl
         repoField.text = s.repo
         issueField.text = s.issue
         agentField.text = s.agent

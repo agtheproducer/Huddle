@@ -23,6 +23,8 @@ class BoardSettings : PersistentStateComponent<BoardSettings.Values> {
         var repo: String = ""
         var issue: String = ""
         var agent: String = ""
+        /** HTTP server URL for real-time mode, e.g. `http://localhost:3000`. */
+        var httpUrl: String = ""
         /** Whether a token was saved in the password safe, so the UI thread never has to read it. */
         var tokenSaved: Boolean = false
     }
@@ -65,12 +67,17 @@ data class BoardConfig(
     val repo: String,
     val issue: String,
     val agent: String,
+    val httpUrl: String,
     private val tokenInSettings: Boolean,
     private val envToken: String?,
 ) {
     /** Enough to read the live board: a repo, a numeric Issue and a token from either place. */
     val liveAvailable: Boolean
         get() = repo.isNotBlank() && issue.toIntOrNull() != null && (tokenInSettings || !envToken.isNullOrBlank())
+
+    /** Whether an HTTP server URL is configured. */
+    val httpAvailable: Boolean
+        get() = httpUrl.isNotBlank()
 
     /** The token: the saved one first, else GITHUB_TOKEN. Can block: call it off the UI thread. */
     fun token(): String? = (if (tokenInSettings) BoardSettings.readToken() else null) ?: envToken?.takeIf { it.isNotBlank() }
@@ -91,6 +98,7 @@ data class BoardConfig(
                 repo = pick(saved.repo, "AGENT_BOARD_REPO"),
                 issue = pick(saved.issue, "AGENT_BOARD_ISSUE"),
                 agent = pick(saved.agent, "AGENT_BOARD_AGENT"),
+                httpUrl = pick(saved.httpUrl, "AGENT_BOARD_HTTP_URL"),
                 tokenInSettings = saved.tokenSaved,
                 envToken = env["GITHUB_TOKEN"],
             )

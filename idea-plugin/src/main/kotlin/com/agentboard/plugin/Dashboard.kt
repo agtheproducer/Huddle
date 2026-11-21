@@ -76,8 +76,11 @@ class Dashboard(
     private val inFlight = AtomicReference<BoardSource?>(null)
     private var lastRendered: BoardState? = null
 
-    /** Polls the live Issue every 5 seconds; fixtures never change, so they are not polled. */
-    private val refreshTimer = Timer(REFRESH_MS) { if (currentSource is LiveSource) reload() }
+    /** Polls the live board every 5 seconds; fixtures never change, so they are not polled. */
+    private val refreshTimer = Timer(REFRESH_MS) {
+        val src = currentSource
+        if (src is LiveSource || src is HttpSource) reload()
+    }
     /** This laptop's agent, whose cards are outlined. Empty means none. */
     private val currentAgent: String get() = config.agent
     /** Repo for commit links; the team repo when none is configured (fixtures). */
@@ -116,18 +119,34 @@ class Dashboard(
         val requested = System.getenv("AGENT_BOARD_STAGE")
             ?.let { wanted -> sourceNames.indexOfFirst { it.equals(wanted, ignoreCase = true) } }
             ?.takeIf { it >= 0 }
-        val initial = requested ?: sourceNames.indexOf(LiveSource.LABEL).takeIf { it >= 0 } ?: 0
+        val initial = requested ?: run {
+            // Prefer HTTP over Live, then fall back to first fixture
+            sourceNames.indexOf(HttpSource.LABEL).takeIf { it >= 0 }
+                ?: sourceNames.indexOf(LiveSource.LABEL).takeIf { it >= 0 }
+                ?: 0
+        }
         stageBox.selectedIndex = initial  // fires the listener, which loads the board
         if (initial == 0) selectSource(0)
-        if (!config.liveAvailable) showStatus("Demo stages only. Set up the live board with ⚙.")
+        if (!config.liveAvailable && !config.httpAvailable) showStatus("Demo stages only. Set up the live board with ⚙.")
     }
 
-    private fun namesFor(c: BoardConfig) = fixtureNames + if (c.liveAvailable) listOf(LiveSource.LABEL) else emptyList()
+    private fun namesFor(c: BoardConfig): List<String> {
+        val sources = mutableListOf<String>()
+        if (c.httpAvailable) sources.add(HttpSource.LABEL)
+        if (c.liveAvailable) sources.add(LiveSource.LABEL)
+        return fixtureNames + sources
+    }
 
-    private fun sourceAt(index: Int): BoardSource =
-        if (sourceNames[index] == LiveSource.LABEL) LiveSource(config) else FixtureSource(DemoFixtures.Stage.entries[index])
+    private fun sourceAt(index: Int): BoardSource {
+        val name = sourceNames[index]
+        return when {
+            name == HttpSource.LABEL -> HttpSource(config)
+            name == LiveSource.LABEL -> LiveSource(config)
+            else -> FixtureSource(DemoFixtures.Stage.entries[index])
+        }
+    }
 
-    /** New settings: rebuild the stage list and go to Live when it is now set up. */
+    /** New settings: rebuild the stage list and go to the best live source when available. */
     private fun settingsChanged() {
         config = BoardConfig.current()
         sourceNames = namesFor(config)
@@ -137,10 +156,13 @@ class Dashboard(
         } finally {
             updatingModel = false
         }
+        // Prefer HTTP over Live
+        val http = sourceNames.indexOf(HttpSource.LABEL)
         val live = sourceNames.indexOf(LiveSource.LABEL)
-        if (live >= 0) {
-            stageBox.selectedIndex = live
-            selectSource(live)  // always reconnect: the repo, Issue or token may have changed
+        val target = http.takeIf { it >= 0 } ?: live.takeIf { it >= 0 }
+        if (target != null) {
+            stageBox.selectedIndex = target
+            selectSource(target)  // always reconnect: the URL, repo, Issue or token may have changed
         } else {
             stageBox.selectedIndex = 0
             selectSource(0)
@@ -178,7 +200,7 @@ class Dashboard(
                         // Skip the rebuild when nothing changed, so a 5-second poll does not flicker or move the scroll.
                         if (state != lastRendered) render(state)
                         showStatus(
-                            if (source is LiveSource || config.liveAvailable) "Last updated ${CLOCK_FORMAT.format(Instant.now())}"
+                            if (source is LiveSource || source is HttpSource || config.liveAvailable || config.httpAvailable) "Last updated ${CLOCK_FORMAT.format(Instant.now())}"
                             else "Demo stages only. Set up the live board with ⚙.",
                         )
                     },

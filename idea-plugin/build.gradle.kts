@@ -34,7 +34,7 @@ intellijPlatform {
 }
 
 tasks.runIde {
-    listOf("AGENT_BOARD_REPO", "AGENT_BOARD_ISSUE", "AGENT_BOARD_AGENT", "AGENT_BOARD_STAGE", "GITHUB_TOKEN").forEach { key ->
+    listOf("AGENT_BOARD_REPO", "AGENT_BOARD_ISSUE", "AGENT_BOARD_AGENT", "AGENT_BOARD_STAGE", "AGENT_BOARD_HTTP_URL", "GITHUB_TOKEN").forEach { key ->
         System.getenv(key)?.let { environment(key, it) }
     }
     // Open this repo straight away so the Agent Board tool window is one click from launch.

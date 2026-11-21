@@ -4,6 +4,7 @@ import com.agentboard.core.BoardClient
 import com.agentboard.core.BoardState
 import com.agentboard.core.DemoFixtures
 import com.agentboard.core.GitHubIssueStore
+import com.agentboard.core.HttpBoardStore
 
 /** Where the tool window gets its board from: a demo fixture stage or the live GitHub Issue. */
 interface BoardSource {
@@ -32,5 +33,23 @@ class LiveSource(private val config: BoardConfig) : BoardSource {
 
     companion object {
         const val LABEL = "Live"
+    }
+}
+
+/**
+ * The board from an HTTP server. Real-time, no GitHub token needed.
+ * Calls the server on every [load]: call it from a background thread, never the UI thread.
+ */
+class HttpSource(private val config: BoardConfig) : BoardSource {
+    override val label: String = LABEL
+
+    private val client: BoardClient by lazy {
+        BoardClient(HttpBoardStore(config.httpUrl), config.agent)
+    }
+
+    override fun load(): BoardState = client.board()
+
+    companion object {
+        const val LABEL = "HTTP"
     }
 }
