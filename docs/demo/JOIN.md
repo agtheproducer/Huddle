@@ -15,7 +15,7 @@ you only download two files. About 10 minutes.
 
 ## 1. Download
 
-From the release page (link in the coordination Issue):
+From the release page, **https://github.com/agtheproducer/Huddle/releases/tag/demo-0.1.0**:
 
 - `idea-plugin.zip`: the IntelliJ plugin
 - `mcp.zip`: the board tools for your agent
