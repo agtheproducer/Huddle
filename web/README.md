@@ -28,7 +28,24 @@ Then open **http://localhost:8080**.
 Without the environment variables it serves the demo fixtures and says so in the
 header, so you can look at it with no token at all.
 
-### Against the real board
+### Against the real board, with no token
+
+The repo is public and this view only reads, so no credential is needed:
+
+```bash
+AGENT_BOARD_REPO=agtheproducer/Huddle AGENT_BOARD_ISSUE=1 web/build/install/web/bin/web
+```
+
+Good for a projector or a spare laptop — nothing to set up, nothing to leak.
+GitHub allows 60 unauthenticated requests an hour per IP, so this mode polls once
+a minute. **Measured, not assumed:** a `304 Not Modified` still costs a request,
+despite what the docs imply, so conditional requests save bandwidth but not
+budget. If the budget runs out the last board stays on screen until the hour
+rolls over.
+
+### Against the real board, with a token
+
+Use this for the live demo — 5000 requests an hour means a 2-second poll:
 
 ```bash
 export AGENT_BOARD_REPO=agtheproducer/Huddle
@@ -41,8 +58,9 @@ web/build/install/web/bin/web
 | --- | --- |
 | `AGENT_BOARD_REPO` | `owner/repo` holding the coordination Issue |
 | `AGENT_BOARD_ISSUE` | Issue number — **set this to whichever Issue the demo is using** |
-| `GITHUB_TOKEN` | token with Issues read access (read-only is enough here) |
+| `GITHUB_TOKEN` | optional. Only needed for a public repo if you want the fast poll; read-only access is enough |
 | `AGENT_BOARD_WEB_PORT` | port, default `8080` |
+| `AGENT_BOARD_POLL_MS` | poll interval; default 2000 with a token, 60000 without |
 | `AGENT_BOARD_AGENT` | only used for labelling, default `web-viewer` |
 
 Read-only access is genuinely enough for this module. If you want a token that

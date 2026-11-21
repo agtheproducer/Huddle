@@ -22,22 +22,32 @@ import java.util.Collections
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
-private val LIVE_VARS = listOf("AGENT_BOARD_REPO", "AGENT_BOARD_ISSUE", "GITHUB_TOKEN")
-
 private fun log(message: String) = System.err.println("[agent-board-web] $message")
 
 fun main() {
     val env = System.getenv()
-    val live = LIVE_VARS.all { !env[it].isNullOrBlank() }
+    val repo = env["AGENT_BOARD_REPO"]?.takeIf { it.isNotBlank() }
+    val issue = env["AGENT_BOARD_ISSUE"]?.takeIf { it.isNotBlank() }?.toIntOrNull()
+    val token = env["GITHUB_TOKEN"]?.takeIf { it.isNotBlank() }
     val me = env["AGENT_BOARD_AGENT"]?.takeIf { it.isNotBlank() } ?: "amit-claude"
     val port = env["AGENT_BOARD_WEB_PORT"]?.toIntOrNull() ?: 8080
-    val pollMs = env["AGENT_BOARD_POLL_MS"]?.toLongOrNull() ?: 2_000L
+    val live = repo != null && issue != null
 
-    val store = if (live) GitHubIssueStore.fromEnvironment(env) else InMemoryBoardStore(DemoFixtures.comments())
+    // With a token GitHub allows 5000 requests an hour, so a 2s poll is fine. Without
+    // one it is 60 an hour, measured, including 304s — so roughly one a minute.
+    val pollMs = env["AGENT_BOARD_POLL_MS"]?.toLongOrNull() ?: if (token != null) 2_000L else 60_000L
+
+    val store = when {
+        live && token != null -> GitHubIssueStore(repo!!, issue!!, token)
+        live -> PublicIssueStore(repo!!, issue!!)
+        else -> InMemoryBoardStore(DemoFixtures.comments())
+    }
     val client = BoardClient(store, me)
-    val source =
-        if (live) "${env["AGENT_BOARD_REPO"]} issue #${env["AGENT_BOARD_ISSUE"]}"
-        else "demo fixtures (nothing is read from GitHub)"
+    val source = when {
+        live && token != null -> "$repo issue #$issue"
+        live -> "$repo issue #$issue (public, read-only, no token)"
+        else -> "demo fixtures (nothing is read from GitHub)"
+    }
 
     val hub = Hub(client, me, source, live)
 
