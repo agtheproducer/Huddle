@@ -30,3 +30,7 @@ include(":web")
 
 // Kotlin/JS server for Vercel deployment — real-time SSE backend (Amit's agent).
 include(":server")
+
+// Demo app for the rehearsal: calculator backend in Kotlin (julieta-claude, task calc-backend).
+include(":calc-backend")
+project(":calc-backend").projectDir = file("demo/calculator/backend")
