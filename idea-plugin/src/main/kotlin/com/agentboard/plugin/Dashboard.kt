@@ -95,10 +95,12 @@ class Dashboard(
             refreshTimer.stop()
         }
         refreshTimer.start()
-        // Optional AGENT_BOARD_STAGE (e.g. "conflict" or "live") picks the stage shown at startup.
-        val initial = System.getenv("AGENT_BOARD_STAGE")
+        // Startup stage: AGENT_BOARD_STAGE if set (e.g. "conflict"), else Live when the live board is
+        // configured, else the first demo stage. A configured laptop should never open on staged data.
+        val requested = System.getenv("AGENT_BOARD_STAGE")
             ?.let { wanted -> sourceNames.indexOfFirst { it.equals(wanted, ignoreCase = true) } }
-            ?.takeIf { it >= 0 } ?: 0
+            ?.takeIf { it >= 0 }
+        val initial = requested ?: sourceNames.indexOf("Live").takeIf { it >= 0 } ?: 0
         stageBox.selectedIndex = initial  // fires the listener, which loads the board
         if (initial == 0) selectSource(0)
     }
