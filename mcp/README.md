@@ -2,11 +2,12 @@
 
 Local **stdio MCP server** in Kotlin that exposes the board to coding agents.
 
+**Full instructions: [`docs/tasks/amit.md`](../docs/tasks/amit.md).** The build file and a starter server already work.
+
 ## To build
 
-1. Create `mcp/build.gradle.kts` (Kotlin JVM + `application`), depend on `project(":core")` and the Kotlin MCP SDK (`io.modelcontextprotocol:kotlin-sdk`).
-2. Add `include(":mcp")` in `settings.gradle.kts`.
-3. Implement the six tools in `docs/protocol.md`, each a thin wrapper around `BoardClient`.
+1. `./gradlew :mcp:installDist` → `mcp/build/install/mcp/bin/mcp`
+2. Implement the six tools in `docs/protocol.md`, each a thin wrapper around `BoardClient`.
 4. Start against `InMemoryBoardStore(DemoFixtures.comments())`, then switch to `GitHubIssueStore.fromEnvironment()`.
 5. Document how to connect it to the JetBrains AI agent (or Claude Code) on each laptop.
 
