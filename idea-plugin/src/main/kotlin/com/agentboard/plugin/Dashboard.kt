@@ -9,6 +9,7 @@ import com.intellij.icons.AllIcons
 import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.util.Disposer
@@ -30,6 +31,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import javax.swing.BoxLayout
+import javax.swing.DefaultComboBoxModel
 import javax.swing.JButton
 import javax.swing.JComponent
 import javax.swing.Scrollable
@@ -47,16 +49,20 @@ class Dashboard(
     private val parentDisposable: Disposable,
 ) : JBPanel<Dashboard>(BorderLayout()) {
 
-    private val sources: List<() -> BoardSource> = buildList {
-        DemoFixtures.Stage.entries.forEach { stage -> add { FixtureSource(stage) } }
-        if (liveAvailable()) add { LiveSource() }
-    }
-    private val sourceNames = DemoFixtures.Stage.entries.map { FixtureSource(it).label } +
-        (if (liveAvailable()) listOf("Live") else emptyList())
+    /** Settings (or environment) this panel shows; replaced when the settings change. */
+    private var config = BoardConfig.current()
+    private val fixtureNames = DemoFixtures.Stage.entries.map { FixtureSource(it).label }
+    private var sourceNames = namesFor(config)
 
-    private val stageBox = ComboBox(sourceNames.toTypedArray())
+    private val stageBox = ComboBox(DefaultComboBoxModel(sourceNames.toTypedArray()))
+    /** True while the combo model is being replaced, so its selection events are ignored. */
+    private var updatingModel = false
     private val refreshButton = JButton(AllIcons.Actions.Refresh).apply {
         toolTipText = "Refresh"
+        putClientProperty("JButton.buttonType", "square")
+    }
+    private val settingsButton = JButton(AllIcons.General.Settings).apply {
+        toolTipText = "Agent Board settings"
         putClientProperty("JButton.buttonType", "square")
     }
     private val statusLabel = plainLabel("").apply { foreground = JBColor.GRAY }
@@ -72,13 +78,16 @@ class Dashboard(
 
     /** Polls the live Issue every 5 seconds; fixtures never change, so they are not polled. */
     private val refreshTimer = Timer(REFRESH_MS) { if (currentSource is LiveSource) reload() }
-    private val currentAgent: String = System.getenv("AGENT_BOARD_AGENT")?.takeIf { it.isNotBlank() } ?: LiveSource.DEFAULT_AGENT
-    private val repo: String = System.getenv("AGENT_BOARD_REPO")?.takeIf { it.isNotBlank() } ?: "agtheproducer/Huddle"
+    /** This laptop's agent, whose cards are outlined. Empty means none. */
+    private val currentAgent: String get() = config.agent
+    /** Repo for commit links; the team repo when none is configured (fixtures). */
+    private val repo: String get() = config.repo.ifBlank { "agtheproducer/Huddle" }
 
     init {
         val controls = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(6), JBUI.scale(4))).apply {
             add(stageBox)
             add(refreshButton)
+            add(settingsButton)
         }
         // Status sits on its own line so the toolbar fits a narrow tool window.
         val toolbar = JBPanel<JBPanel<*>>(BorderLayout()).apply {
@@ -88,8 +97,15 @@ class Dashboard(
         add(toolbar, BorderLayout.NORTH)
         add(scrollPane, BorderLayout.CENTER)
 
-        stageBox.addActionListener { selectSource(stageBox.selectedIndex) }
+        stageBox.addActionListener { if (!updatingModel) selectSource(stageBox.selectedIndex) }
         refreshButton.addActionListener { reload() }
+        settingsButton.addActionListener {
+            ShowSettingsUtil.getInstance().showSettingsDialog(project, BoardConfigurable::class.java)
+        }
+        ApplicationManager.getApplication().messageBus.connect(parentDisposable)
+            .subscribe(BoardSettingsListener.TOPIC, BoardSettingsListener {
+                ApplicationManager.getApplication().invokeLater { if (!disposed) settingsChanged() }
+            })
         Disposer.register(parentDisposable) {
             disposed = true
             refreshTimer.stop()
@@ -100,13 +116,40 @@ class Dashboard(
         val requested = System.getenv("AGENT_BOARD_STAGE")
             ?.let { wanted -> sourceNames.indexOfFirst { it.equals(wanted, ignoreCase = true) } }
             ?.takeIf { it >= 0 }
-        val initial = requested ?: sourceNames.indexOf("Live").takeIf { it >= 0 } ?: 0
+        val initial = requested ?: sourceNames.indexOf(LiveSource.LABEL).takeIf { it >= 0 } ?: 0
         stageBox.selectedIndex = initial  // fires the listener, which loads the board
         if (initial == 0) selectSource(0)
+        if (!config.liveAvailable) showStatus("Demo stages only. Set up the live board with ⚙.")
+    }
+
+    private fun namesFor(c: BoardConfig) = fixtureNames + if (c.liveAvailable) listOf(LiveSource.LABEL) else emptyList()
+
+    private fun sourceAt(index: Int): BoardSource =
+        if (sourceNames[index] == LiveSource.LABEL) LiveSource(config) else FixtureSource(DemoFixtures.Stage.entries[index])
+
+    /** New settings: rebuild the stage list and go to Live when it is now set up. */
+    private fun settingsChanged() {
+        config = BoardConfig.current()
+        sourceNames = namesFor(config)
+        updatingModel = true
+        try {
+            stageBox.model = DefaultComboBoxModel(sourceNames.toTypedArray())
+        } finally {
+            updatingModel = false
+        }
+        val live = sourceNames.indexOf(LiveSource.LABEL)
+        if (live >= 0) {
+            stageBox.selectedIndex = live
+            selectSource(live)  // always reconnect: the repo, Issue or token may have changed
+        } else {
+            stageBox.selectedIndex = 0
+            selectSource(0)
+            showStatus("Demo stages only. Set up the live board with ⚙.")
+        }
     }
 
     private fun selectSource(index: Int) {
-        currentSource = runCatching { sources[index]() }.getOrElse { e ->
+        currentSource = runCatching { sourceAt(index) }.getOrElse { e ->
             showError("Could not open board: ${e.message}")
             null
         }
@@ -134,7 +177,10 @@ class Dashboard(
                     onSuccess = { state ->
                         // Skip the rebuild when nothing changed, so a 5-second poll does not flicker or move the scroll.
                         if (state != lastRendered) render(state)
-                        showStatus("Last updated ${CLOCK_FORMAT.format(Instant.now())}")
+                        showStatus(
+                            if (source is LiveSource || config.liveAvailable) "Last updated ${CLOCK_FORMAT.format(Instant.now())}"
+                            else "Demo stages only. Set up the live board with ⚙.",
+                        )
                     },
                     // Keep the last good board on screen and say what went wrong.
                     onFailure = { showError("Could not load board: ${it.message ?: it.javaClass.simpleName}") },

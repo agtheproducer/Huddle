@@ -18,23 +18,19 @@ class FixtureSource(private val stage: DemoFixtures.Stage) : BoardSource {
 }
 
 /**
- * The live board from the coordination Issue. Calls GitHub on every [load]:
- * call it from a background thread, never the UI thread.
+ * The live board from the coordination Issue in [config]. Calls GitHub on every [load], and reads
+ * the token from the password safe on the first one: call it from a background thread, never the UI thread.
  */
-class LiveSource(env: Map<String, String> = System.getenv()) : BoardSource {
-    val agent: String = env["AGENT_BOARD_AGENT"]?.takeIf { it.isNotBlank() } ?: DEFAULT_AGENT
-    private val client = BoardClient(GitHubIssueStore.fromEnvironment(env), agent)
+class LiveSource(private val config: BoardConfig) : BoardSource {
+    override val label: String = LABEL
 
-    override val label: String = "Live"
+    private val client: BoardClient by lazy {
+        BoardClient(GitHubIssueStore.fromEnvironment(config.asEnvironment()), config.agent)
+    }
+
     override fun load(): BoardState = client.board()
 
     companion object {
-        const val DEFAULT_AGENT = "julieta-claude"
+        const val LABEL = "Live"
     }
 }
-
-private val LIVE_ENV = listOf("AGENT_BOARD_REPO", "AGENT_BOARD_ISSUE", "GITHUB_TOKEN")
-
-/** True when the env vars needed for [LiveSource] are all set. */
-fun liveAvailable(env: Map<String, String> = System.getenv()): Boolean =
-    LIVE_ENV.all { !env[it].isNullOrBlank() }
