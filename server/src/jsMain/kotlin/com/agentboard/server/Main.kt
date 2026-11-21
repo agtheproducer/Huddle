@@ -19,6 +19,6 @@ fun main() {
         handler(req, res)
     })
     
-    server.listen(port)
-    js("console.log")("Agent Board server listening on port $port")
+    server.listen(port, "0.0.0.0")
+    js("console.log")("Agent Board server listening on 0.0.0.0:$port")
 }
