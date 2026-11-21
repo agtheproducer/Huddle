@@ -4,6 +4,7 @@ import com.agentboard.core.BoardClient
 import com.agentboard.core.BoardState
 import com.agentboard.core.DemoFixtures
 import com.agentboard.core.GitHubIssueStore
+import com.agentboard.core.HttpBoardStore
 import com.agentboard.core.InMemoryBoardStore
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
@@ -31,19 +32,24 @@ fun main() {
     val token = env["GITHUB_TOKEN"]?.takeIf { it.isNotBlank() }
     val me = env["AGENT_BOARD_AGENT"]?.takeIf { it.isNotBlank() } ?: "amit-claude"
     val port = env["AGENT_BOARD_WEB_PORT"]?.toIntOrNull() ?: 8080
-    val live = repo != null && issue != null
+    val httpUrl = env["AGENT_BOARD_HTTP_URL"]?.takeIf { it.isNotBlank() }?.trimEnd('/')
+    val live = httpUrl != null || (repo != null && issue != null)
 
     // With a token GitHub allows 5000 requests an hour, so a 2s poll is fine. Without
     // one it is 60 an hour, measured, including 304s — so roughly one a minute.
-    val pollMs = env["AGENT_BOARD_POLL_MS"]?.toLongOrNull() ?: if (token != null) 2_000L else 60_000L
+    // The HTTP board server has no rate limit, so it is polled every second.
+    val pollMs = env["AGENT_BOARD_POLL_MS"]?.toLongOrNull()
+        ?: if (httpUrl != null) 1_000L else if (token != null) 2_000L else 60_000L
 
     val store = when {
+        httpUrl != null -> HttpBoardStore(httpUrl)
         live && token != null -> GitHubIssueStore(repo!!, issue!!, token)
         live -> PublicIssueStore(repo!!, issue!!)
         else -> InMemoryBoardStore(DemoFixtures.comments())
     }
     val client = BoardClient(store, me)
     val source = when {
+        httpUrl != null -> "board server $httpUrl"
         live && token != null -> "$repo issue #$issue"
         live -> "$repo issue #$issue (public, read-only, no token)"
         else -> "demo fixtures (nothing is read from GitHub)"
