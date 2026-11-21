@@ -20,3 +20,6 @@ kotlin-js-store/
 # local secrets
 .env
 *.token
+
+# IntelliJ Platform Gradle Plugin local cache and sandbox
+.intellijPlatform/
