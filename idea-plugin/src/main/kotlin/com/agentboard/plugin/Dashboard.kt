@@ -19,6 +19,7 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextArea
+import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
@@ -83,6 +84,23 @@ class Dashboard(
     }
     /** This laptop's agent, whose cards are outlined. Empty means none. */
     private val currentAgent: String get() = config.agent
+    /**
+     * Who the person at this IDE posts as: the agent id's first part ("amit-claude" → "amit"),
+     * so their messages are told apart from their own agent's.
+     */
+    private val humanSender: String get() = currentAgent.substringBefore('-').ifBlank { "human" }
+
+    // ---- composer: the person at the IDE talks to the agents ----
+    private val toBox = ComboBox(DefaultComboBoxModel(arrayOf(EVERYONE))).apply {
+        toolTipText = "Who the message is for"
+    }
+    private val messageField = JBTextField().apply {
+        emptyText.text = "Message the agents… (Enter to send)"
+    }
+    private val sendButton = JButton("Send")
+    private val senderLabel = plainLabel("").apply { foreground = JBColor.GRAY }
+    @Volatile private var sending = false
+
     /** Repo for commit links; the team repo when none is configured (fixtures). */
     private val repo: String get() = config.repo.ifBlank { "agtheproducer/Huddle" }
 
@@ -99,6 +117,9 @@ class Dashboard(
         }
         add(toolbar, BorderLayout.NORTH)
         add(scrollPane, BorderLayout.CENTER)
+        add(composer(), BorderLayout.SOUTH)
+        sendButton.addActionListener { send() }
+        messageField.addActionListener { send() }
 
         stageBox.addActionListener { if (!updatingModel) selectSource(stageBox.selectedIndex) }
         refreshButton.addActionListener { reload() }
@@ -175,6 +196,7 @@ class Dashboard(
             showError("Could not open board: ${e.message}")
             null
         }
+        updateComposer()
         scrollToTopOnRender = true
         lastRendered = null
         reload()
@@ -211,6 +233,68 @@ class Dashboard(
         }
     }
 
+    private fun composer(): JComponent {
+        val row = JBPanel<JBPanel<*>>(BorderLayout(JBUI.scale(6), 0)).apply {
+            add(toBox, BorderLayout.WEST)
+            add(messageField, BorderLayout.CENTER)
+            add(sendButton, BorderLayout.EAST)
+        }
+        return JBPanel<JBPanel<*>>(BorderLayout()).apply {
+            border = JBUI.Borders.compound(JBUI.Borders.customLineTop(JBColor.border()), JBUI.Borders.empty(6, 8))
+            add(row, BorderLayout.CENTER)
+            add(senderLabel.apply { border = JBUI.Borders.emptyTop(3) }, BorderLayout.SOUTH)
+        }
+    }
+
+    /** The composer only works on a board that can be posted to: HTTP or Live, never the demo stages. */
+    private fun updateComposer() {
+        val live = currentSource is HttpSource || currentSource is LiveSource
+        listOf(toBox, messageField, sendButton).forEach { it.isEnabled = live && !sending }
+        senderLabel.text = if (live) "You post as \"$humanSender\"" else "Switch to HTTP or Live to message the agents."
+    }
+
+    /** Agents on the board, newest list each render; keeps the current pick when it is still there. */
+    private fun updateRecipients(state: BoardState) {
+        val agents = state.agents.keys.filter { it != humanSender }.sorted()
+        val wanted = listOf(EVERYONE) + agents
+        val current = (0 until toBox.itemCount).map { toBox.getItemAt(it) }
+        if (wanted == current) return
+        val selected = toBox.selectedItem as? String
+        toBox.model = DefaultComboBoxModel(wanted.toTypedArray())
+        toBox.selectedItem = if (selected in wanted) selected else currentAgent.takeIf { it in wanted } ?: EVERYONE
+    }
+
+    /** Posts the typed message off the UI thread, then refreshes so it shows up straight away. */
+    private fun send() {
+        val text = messageField.text.trim()
+        val source = currentSource
+        if (text.isEmpty() || sending || source == null) return
+        val to = (toBox.selectedItem as? String)?.takeIf { it != EVERYONE }
+        val sender = humanSender
+        sending = true
+        updateComposer()
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val result = runCatching {
+                val client = source.clientAs(sender) ?: error("This board is read-only")
+                client.sendMessage(text, toAgent = to)
+            }
+            ApplicationManager.getApplication().invokeLater {
+                if (disposed) return@invokeLater
+                sending = false
+                updateComposer()
+                result.fold(
+                    onSuccess = {
+                        messageField.text = ""
+                        showStatus("Sent to ${to ?: "everyone"}")
+                        reload()
+                    },
+                    onFailure = { showError("Could not send: ${it.message ?: it.javaClass.simpleName}") },
+                )
+                messageField.requestFocusInWindow()
+            }
+        }
+    }
+
     private fun showStatus(message: String) {
         statusLabel.text = message
         statusLabel.foreground = JBColor.GRAY
@@ -224,6 +308,7 @@ class Dashboard(
     /** Rebuilds every section from [state]. Call on the UI thread. */
     fun render(state: BoardState) {
         lastRendered = state
+        updateRecipients(state)
         content.removeAll()
 
         state.openConflicts.forEach { c ->
@@ -408,6 +493,7 @@ class Dashboard(
         val HANDOFF_BG = JBColor(Color(0xE8F2FF), Color(0x25324A))
         const val REFRESH_MS = 5_000
         const val RECENT_COUNT = 3
+        const val EVERYONE = "Everyone"
         val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault())
         val CLOCK_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault())
 

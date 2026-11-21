@@ -10,6 +10,12 @@ import com.agentboard.core.HttpBoardStore
 interface BoardSource {
     val label: String
     fun load(): BoardState
+
+    /**
+     * A client that posts to this board as [sender], or null for read-only demo stages.
+     * Lets the person at the IDE talk to the agents. Post off the UI thread.
+     */
+    fun clientAs(sender: String): BoardClient? = null
 }
 
 /** One of the four demo stages, built from `DemoFixtures`. No network. */
@@ -31,6 +37,9 @@ class LiveSource(private val config: BoardConfig) : BoardSource {
 
     override fun load(): BoardState = client.board()
 
+    override fun clientAs(sender: String): BoardClient =
+        BoardClient(GitHubIssueStore.fromEnvironment(config.asEnvironment()), sender)
+
     companion object {
         const val LABEL = "Live"
     }
@@ -48,6 +57,8 @@ class HttpSource(private val config: BoardConfig) : BoardSource {
     }
 
     override fun load(): BoardState = client.board()
+
+    override fun clientAs(sender: String): BoardClient = BoardClient(HttpBoardStore(config.httpUrl), sender)
 
     companion object {
         const val LABEL = "HTTP"
