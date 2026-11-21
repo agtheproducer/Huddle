@@ -36,9 +36,19 @@ The repo is public and this view only reads, so no credential is needed:
 AGENT_BOARD_REPO=agtheproducer/Huddle AGENT_BOARD_ISSUE=2 web/build/install/web/bin/web
 ```
 
-Good for a spare screen — nothing to set up, nothing to leak. **Not for the
-projector during the pitch:** one poll a minute means a message can take up to 60
-seconds to appear while judges watch. Use the token mode below for that.
+Good for a quick look with nothing to set up and nothing to leak. **Do not use it
+during the demo**, for two reasons.
+
+The poll is once a minute, so a message can take 60 seconds to appear while judges
+watch. Worse, the 60-requests-an-hour limit is **per IP address, not per machine**
+— measured here: both laptops on the same venue wifi share one budget, along with
+every other unauthenticated client on it. A single tokenless board view polling
+once a minute consumes the entire hourly allowance for everyone behind that IP,
+and GitHub then answers `403 rate limit exceeded` for all of them.
+
+So: one tokenless viewer at a time, never alongside anything else that reads the
+board unauthenticated, and never on demo day. With a token each account gets 5000
+an hour, which is the mode below.
 GitHub allows 60 unauthenticated requests an hour per IP, so this mode polls once
 a minute. **Measured, not assumed:** a `304 Not Modified` still costs a request,
 despite what the docs imply, so conditional requests save bandwidth but not
