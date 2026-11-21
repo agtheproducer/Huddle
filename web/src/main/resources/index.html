@@ -6,151 +6,165 @@
 <title>Agent Board</title>
 <style>
   :root {
-    --bg: #0d1117; --panel: #161b22; --line: #30363d;
-    --text: #e6edf3; --dim: #8b949e;
-    --accent: #58a6ff; --warn: #f0883e; --bad: #f85149; --good: #3fb950; --handoff: #bc8cff;
+    --bg: #0b141a; --bar: #202c33; --mine: #005c4b; --theirs: #202c33;
+    --text: #e9edef; --dim: #8696a0; --line: #2a3942;
+    --bad: #f15c6d; --warn: #f0b429; --handoff: #a78bfa; --good: #25d366;
   }
   * { box-sizing: border-box; }
+  html, body { height: 100%; }
   body {
     margin: 0; background: var(--bg); color: var(--text);
-    font: 16px/1.5 ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+    font: 16px/1.45 ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+    display: flex; flex-direction: column;
   }
   header {
-    position: sticky; top: 0; z-index: 5; background: var(--panel);
-    border-bottom: 1px solid var(--line); padding: 14px 24px;
-    display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+    background: var(--bar); border-bottom: 1px solid var(--line);
+    padding: 10px 20px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; flex: none;
   }
-  h1 { font-size: 20px; margin: 0; letter-spacing: -0.01em; }
-  .src { color: var(--dim); font-size: 14px; }
-  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--good); display: inline-block; }
-  .dot.stale { background: var(--warn); }
+  h1 { font-size: 17px; margin: 0; }
+  .sub { color: var(--dim); font-size: 13px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--good); display: inline-block; vertical-align: middle; }
   .dot.err { background: var(--bad); }
-  .wrap { display: grid; grid-template-columns: 1fr 340px; gap: 24px; padding: 24px; align-items: start; }
-  @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } }
-  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); margin: 0 0 12px; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
-  .ev { border-left: 3px solid var(--line); }
-  .ev .top { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; margin-bottom: 6px; }
-  .who { font-weight: 650; }
-  .arrow { color: var(--dim); }
-  .badge { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--dim); }
-  .when { color: var(--dim); font-size: 13px; margin-left: auto; }
-  .msg { white-space: pre-wrap; overflow-wrap: anywhere; }
-  .meta { color: var(--dim); font-size: 13px; margin-top: 8px; }
-  code { background: #010409; border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; font-size: 13px; }
-  .demo { opacity: 0.55; }
-  .demo .badge.staged { color: var(--warn); border-color: var(--warn); }
-  .t-message { border-left-color: var(--accent); }
-  .t-task_claimed { border-left-color: var(--good); }
-  .t-conflict { border-left-color: var(--bad); }
-  .t-handoff { border-left-color: var(--handoff); }
-  .t-progress, .t-task_released, .t-task_done { border-left-color: var(--dim); }
-  .banner { background: #2d1416; border-color: var(--bad); }
-  .banner h3 { margin: 0 0 6px; font-size: 15px; color: var(--bad); }
-  .err-banner { background: #3a2000; border-color: var(--warn); }
-  .task .tid { font-weight: 650; }
-  .paths { font-size: 13px; color: var(--dim); margin-top: 4px; word-break: break-all; }
-  .empty { color: var(--dim); font-style: italic; }
+  .dot.live { animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.25; } }
+  .who-list { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip { font-size: 12px; padding: 3px 10px; border-radius: 999px; background: #111b21; border: 1px solid var(--line); color: var(--dim); }
+  .chip b { color: var(--text); font-weight: 600; }
+
+  #chat { flex: 1; overflow-y: auto; padding: 22px clamp(12px, 6vw, 90px); }
+  .row { display: flex; margin-bottom: 10px; }
+  .row.mine { justify-content: flex-end; }
+  .bubble {
+    max-width: min(620px, 78%); background: var(--theirs);
+    border-radius: 12px; padding: 9px 13px 7px; position: relative;
+    box-shadow: 0 1px 1px rgba(0,0,0,.3); animation: pop .22s ease-out;
+  }
+  .row.mine .bubble { background: var(--mine); }
+  @keyframes pop { from { opacity: 0; transform: translateY(8px); } }
+  .name { font-size: 13px; font-weight: 650; color: #53bdeb; margin-bottom: 2px; }
+  .row.mine .name { color: #9ee7d6; }
+  .body { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .time { font-size: 11px; color: var(--dim); float: right; margin: 6px 0 0 12px; }
+  .row.mine .time { color: #8fd3c2; }
+  .meta { font-size: 12px; color: var(--dim); margin-top: 6px; }
+  code { background: rgba(0,0,0,.35); border-radius: 4px; padding: 1px 5px; font-size: 12px; }
+
+  .note { text-align: center; margin: 14px 0; animation: pop .22s ease-out; }
+  .note span {
+    display: inline-block; background: #182229; color: var(--dim);
+    font-size: 13px; padding: 5px 14px; border-radius: 999px; border: 1px solid var(--line);
+  }
+  .note.conflict span { color: var(--bad); border-color: var(--bad); background: #2a1519; font-weight: 600; }
+  .note.handoff span { color: var(--handoff); border-color: var(--handoff); background: #1e1a2e; }
+  .note.claim span { color: var(--good); border-color: #1f4d38; }
+
+  .staged { opacity: .45; }
+  .staged .bubble::after {
+    content: "staged"; position: absolute; top: -8px; right: 8px;
+    font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
+    background: var(--warn); color: #000; padding: 1px 6px; border-radius: 999px;
+  }
+  .banner { background: #2a1519; border: 1px solid var(--bad); color: var(--text);
+            border-radius: 10px; padding: 12px 16px; margin: 0 0 16px; }
+  .banner b { color: var(--bad); }
+  .empty { color: var(--dim); text-align: center; margin-top: 40px; font-style: italic; }
 </style>
 </head>
 <body>
 <header>
   <h1>Agent Board</h1>
-  <span class="src"><span id="dot" class="dot"></span> <span id="source">connecting…</span></span>
-  <span class="src" id="updated"></span>
+  <span class="sub"><span id="dot" class="dot live"></span> <span id="source">connecting…</span></span>
+  <div class="who-list" id="who"></div>
 </header>
 
-<div class="wrap">
-  <main>
-    <div id="banners"></div>
-    <h2>Conversation</h2>
-    <div id="timeline"><p class="empty">Loading…</p></div>
-  </main>
-  <aside>
-    <h2>Agents</h2>
-    <div id="agents"></div>
-    <h2>Active tasks</h2>
-    <div id="tasks"></div>
-  </aside>
-</div>
+<div id="chat"><p class="empty">Connecting to the board…</p></div>
 
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const timeOf = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); };
+const staged = e => (e.message || '').includes('[DEMO]') || (e.task_id || '').startsWith('demo-');
 
-function timeOf(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  return isNaN(d) ? iso : d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+let me = 'amit-claude';
+
+// Events that read as conversation get a bubble; the rest are system notes, as in a chat app.
+const SPOKEN = new Set(['message', 'progress']);
+
+function bits(e) {
+  const out = [];
+  if (e.task_id) out.push(`task <code>${esc(e.task_id)}</code>`);
+  if (e.branch) out.push(`<code>${esc(e.branch)}</code>`);
+  if (e.commit) out.push(`commit <code>${esc(e.commit)}</code>`);
+  return out.join(' · ');
 }
 
-// An event is staged if the CLI replay marked it, so a viewer can tell it from real traffic.
-const isStaged = e => (e.message || '').includes('[DEMO]') || (e.task_id || '').startsWith('demo-');
-
-function renderEvent(e) {
-  const staged = isStaged(e);
-  const to = e.to_agent ? ` <span class="arrow">→</span> <span class="who">${esc(e.to_agent)}</span>` : '';
-  const bits = [];
-  if (e.task_id) bits.push(`task <code>${esc(e.task_id)}</code>`);
-  if (e.branch) bits.push(`branch <code>${esc(e.branch)}</code>`);
-  if (e.commit) bits.push(`commit <code>${esc(e.commit)}</code>`);
-  if (e.paths && e.paths.length) bits.push(`paths <code>${e.paths.map(esc).join('</code> <code>')}</code>`);
-  return `<div class="card ev t-${esc(e.type)}${staged ? ' demo' : ''}">
-    <div class="top">
-      <span class="who">${esc(e.agent)}</span>${to}
-      <span class="badge">${esc(e.type.replace(/_/g, ' '))}</span>
-      ${staged ? '<span class="badge staged">staged</span>' : ''}
-      <span class="when">${esc(timeOf(e.created_at))}</span>
-    </div>
-    ${e.message ? `<div class="msg">${esc(e.message)}</div>` : ''}
-    ${bits.length ? `<div class="meta">${bits.join(' · ')}</div>` : ''}
-  </div>`;
+function renderOne(e) {
+  const cls = staged(e) ? ' staged' : '';
+  if (SPOKEN.has(e.type)) {
+    const mine = e.agent === me;
+    const to = e.to_agent ? ` <span style="color:var(--dim);font-weight:400">→ ${esc(e.to_agent)}</span>` : '';
+    const m = bits(e);
+    return `<div class="row ${mine ? 'mine' : ''}${cls}"><div class="bubble">
+      <div class="name">${esc(e.agent)}${to}</div>
+      <div class="body">${esc(e.message)}<span class="time">${timeOf(e.created_at)}</span></div>
+      ${m ? `<div class="meta">${m}</div>` : ''}
+    </div></div>`;
+  }
+  let kind = '', text = '';
+  if (e.type === 'task_claimed') {
+    kind = 'claim';
+    text = `${esc(e.agent)} claimed <b>${esc(e.task_id)}</b>${e.paths.length ? ' — ' + esc(e.paths.join(', ')) : ''}`;
+  } else if (e.type === 'handoff') {
+    kind = 'handoff';
+    text = `${esc(e.agent)} handed <b>${esc(e.task_id)}</b> to <b>${esc(e.to_agent)}</b>` +
+           (e.message ? ` — ${esc(e.message)}` : '') +
+           (e.commit ? ` <code>${esc(e.commit)}</code>` : '');
+  } else if (e.type === 'conflict') {
+    kind = 'conflict';
+    text = `Conflict on ${esc(e.task_id || 'the same files')}${e.message ? ' — ' + esc(e.message) : ''}`;
+  } else if (e.type === 'task_released') {
+    text = `${esc(e.agent)} released <b>${esc(e.task_id)}</b>`;
+  } else if (e.type === 'task_done') {
+    text = `${esc(e.agent)} finished <b>${esc(e.task_id)}</b>`;
+  } else {
+    text = `${esc(e.agent)} · ${esc(e.type)}`;
+  }
+  return `<div class="note ${kind}${cls}"><span>${text} · ${timeOf(e.created_at)}</span></div>`;
 }
 
 function render(d) {
+  me = d.me || me;
   $('source').textContent = d.source + (d.live ? '' : ' — not live');
-  $('dot').className = 'dot' + (d.error ? ' err' : '');
-  $('updated').textContent = 'updated ' + new Date().toLocaleTimeString();
+  $('dot').className = 'dot' + (d.error ? ' err' : ' live');
 
-  let banners = '';
-  if (d.error) {
-    banners += `<div class="card err-banner"><h3>Cannot read the board</h3>${esc(d.error)}</div>`;
-  }
+  $('who').innerHTML = (d.agents || []).map(a =>
+    `<span class="chip"><b>${esc(a.agent)}</b>${a.active_tasks.length ? ' · ' + esc(a.active_tasks.join(', ')) : ''}</span>`
+  ).join('');
+
+  const chat = $('chat');
+  const nearBottom = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 150;
+
+  let html = '';
+  if (d.error) html += `<div class="banner"><b>Cannot read the board.</b> ${esc(d.error)}<br>Showing the last board received.</div>`;
   for (const c of d.conflicts || []) {
-    banners += `<div class="card banner">
-      <h3>Conflict: ${esc(c.claimant)} and ${esc(c.current_owner)} both want ${esc(c.task_id || 'the same files')}</h3>
-      <div>${esc(c.reason)}</div>
-      ${c.paths.length ? `<div class="paths">${c.paths.map(esc).join(' · ')}</div>` : ''}
-    </div>`;
+    html += `<div class="banner"><b>Conflict:</b> ${esc(c.claimant)} and ${esc(c.current_owner)} both want
+      ${esc(c.task_id || 'the same files')}. ${esc(c.reason)}</div>`;
   }
-  $('banners').innerHTML = banners;
+  const tl = d.timeline || [];
+  html += tl.length ? tl.map(renderOne).join('') : '<p class="empty">No events on this board yet.</p>';
+  chat.innerHTML = html;
 
-  const tl = (d.timeline || []).slice().reverse();
-  $('timeline').innerHTML = tl.length ? tl.map(renderEvent).join('') : '<p class="empty">No events on this board yet.</p>';
-
-  $('agents').innerHTML = (d.agents || []).length ? d.agents.map(a => `<div class="card">
-      <div class="who">${esc(a.agent)}</div>
-      <div class="meta">${a.active_tasks.length ? esc(a.active_tasks.join(', ')) : 'no active task'}${a.branch ? ' · <code>' + esc(a.branch) + '</code>' : ''}</div>
-    </div>`).join('') : '<p class="empty">Nobody yet.</p>';
-
-  $('tasks').innerHTML = (d.tasks || []).length ? d.tasks.map(t => `<div class="card task">
-      <div><span class="tid">${esc(t.task_id)}</span> <span class="meta">${esc(t.owner)}</span></div>
-      ${t.branch ? `<div class="meta"><code>${esc(t.branch)}</code></div>` : ''}
-      ${t.paths.length ? `<div class="paths">${t.paths.map(esc).join('<br>')}</div>` : ''}
-    </div>`).join('') : '<p class="empty">Nothing claimed.</p>';
+  if (nearBottom) chat.scrollTop = chat.scrollHeight;
 }
 
-async function tick() {
-  try {
-    const r = await fetch('/api/board', {cache: 'no-store'});
-    render(await r.json());
-  } catch (e) {
-    $('dot').className = 'dot err';
-    $('source').textContent = 'server unreachable';
-  }
+// Server pushes a new board the moment it changes; no polling from the browser.
+let es;
+function connect() {
+  es = new EventSource('/api/stream');
+  es.onmessage = ev => { try { render(JSON.parse(ev.data)); } catch (_) {} };
+  es.onerror = () => { $('dot').className = 'dot err'; $('source').textContent = 'reconnecting…'; };
 }
-tick();
-setInterval(tick, 5000);
+connect();
 </script>
 </body>
 </html>

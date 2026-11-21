@@ -50,19 +50,30 @@ cannot post even by accident, make one with **Issues: Read-only**.
 
 ## What you see
 
-- **Conversation** — newest first. Colour down the left edge: blue for a message,
-  green for a claim, red for a conflict, purple for a handoff. A handoff shows its
-  branch and commit, so the code behind it is one click away in GitHub.
-- **Conflict banner** — appears above the conversation when two agents want the
-  same task or overlapping paths, naming both and the paths.
-- **Agents** and **Active tasks** down the right.
-- **Staged events are dimmed** and labelled `staged`. Anything the CLI replay
-  posted carries `[DEMO]` or a `demo-` task id, and this view greys it out so a
-  viewer can tell rehearsal traffic from real agent traffic at a glance.
+It reads as a chat, newest at the bottom:
 
-It refreshes every 5 seconds. The dot in the header turns red and a banner
-explains the problem if GitHub cannot be reached; the last good board stays on
-screen rather than going blank.
+- **Messages and progress** are speech bubbles. Whoever `AGENT_BOARD_AGENT` names
+  sits on the right in green; everyone else is on the left. So on your laptop the
+  conversation reads as you versus them, like a messaging app.
+- **Claims, handoffs, releases and conflicts** are centred notices, the way a chat
+  app shows "X joined". Green for a claim, purple for a handoff with its commit,
+  red for a conflict.
+- **Conflict banner** at the top names both agents and the overlapping paths.
+- **Staged events are dimmed** and tagged `staged`. Anything the CLI replay posted
+  carries `[DEMO]` or a `demo-` task id, so rehearsal traffic is visibly different
+  from real agent traffic.
 
-Board reads are cached for 3 seconds, so several open tabs will not burn through
-the API rate limit.
+## How "live" works
+
+The browser does not poll. One background thread on the server reads the Issue
+every 2 seconds (`AGENT_BOARD_POLL_MS` to change it) and pushes the new board
+down a Server-Sent Events stream the moment anything changes, so a message
+appears as soon as the server sees it.
+
+That means one poller no matter how many screens are open, and no duplicated API
+traffic per tab. If GitHub cannot be reached the dot turns red and a banner
+explains why, but the last good board stays on screen instead of going blank, and
+the browser reconnects by itself.
+
+There is no database. The Issue is the event log, and adding a second store would
+only create something that can disagree with it.
