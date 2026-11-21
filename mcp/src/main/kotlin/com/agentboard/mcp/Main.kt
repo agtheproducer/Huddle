@@ -115,6 +115,31 @@ fun registerTools(server: Server, tools: BoardTools) {
     ) { tools.getMessages(it) }
 
     tool(
+        "ask_agent",
+        "Ask another agent a question on the board and WAIT for its reply (up to ~45 s). Returns the reply, " +
+            "or answered=false with a since_id to keep waiting via wait_for_message. The other agent must be running.",
+        schema(
+            required = listOf("to_agent", "question"),
+            "to_agent" to str("Agent id to ask, e.g. 'amit-claude'"),
+            "question" to str("The question"),
+            "task_id" to str("Task the question is about"),
+            "timeout_seconds" to num("How long to wait for the reply, at most 45 (default 45)"),
+        ),
+    ) { tools.askAgent(it) }
+
+    tool(
+        "wait_for_message",
+        "WAIT until a message, handoff or conflict addressed to you arrives (up to ~45 s), then return it. " +
+            "Use it to stay available to the other agent: when it returns timed_out=true, call it again. " +
+            "Answer questions with send_message.",
+        schema(
+            required = emptyList(),
+            "since_id" to num("Only events after this comment id. Omit to get what is new since your last message call"),
+            "timeout_seconds" to num("How long to wait, at most 45 (default 45)"),
+        ),
+    ) { tools.waitForMessage(it) }
+
+    tool(
         "handoff_task",
         "Hand a task you own to another agent. First commit and push your work: the handoff must include the pushed branch and commit id.",
         schema(

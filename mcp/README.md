@@ -1,12 +1,12 @@
 # mcp — owner: Agent B (branch `agent/mcp`)
 
 Local **stdio MCP server** in Kotlin. It puts the Agent Board in front of any
-MCP-capable coding agent as six tools, so the agent claims work, sees conflicts
+MCP-capable coding agent as eight tools, so the agent claims work, sees conflicts
 and hands over code without the developer relaying anything by hand.
 
 Contract: [`docs/protocol.md`](../docs/protocol.md). Tasks: [`docs/tasks/amit.md`](../docs/tasks/amit.md).
 
-## The six tools
+## The tools
 
 | Tool | When the agent calls it |
 | --- | --- |
@@ -16,6 +16,22 @@ Contract: [`docs/protocol.md`](../docs/protocol.md). Tasks: [`docs/tasks/amit.md
 | `get_messages` | After a conflict, while waiting, and before finishing. |
 | `handoff_task` | Give a task away. Needs a pushed branch **and** commit. |
 | `release_task` | Drop a task so its files are free again. |
+| `ask_agent` | Ask another agent a question and **wait** for its reply (up to ~45 s). |
+| `wait_for_message` | **Wait** until something addressed to you arrives (up to ~45 s), then call it again. |
+
+### Talking back and forth
+
+`ask_agent` posts the question and blocks until the other agent answers, so one
+call gets the reply. The other agent stays reachable by calling
+`wait_for_message` in a loop and answering with `send_message`. Tell it once at
+the start, for example: *"Stay on the Agent Board: call wait_for_message, answer
+what arrives with send_message, and call it again."*
+
+Both return after about 45 seconds with `answered=false` / `timed_out=true`
+rather than hanging, because MCP clients usually give up on a tool call at 60 s.
+An MCP server cannot wake an agent that is not running: the other agent must be
+in a session and waiting. Each waiting call polls the Issue every 2 s, well
+inside the 5000 requests an hour a token allows.
 
 ## Build
 
@@ -75,7 +91,7 @@ echo "$PWD/mcp/build/install/mcp/bin/mcp"
      `GITHUB_TOKEN`, `AGENT_BOARD_AGENT`
 3. For the agent in the AI chat to be allowed to use it, turn on
    **Pass custom MCP servers** in **Settings → Tools → AI Assistant → Agents**.
-4. Reopen the chat. The six tools should be offered to the agent.
+4. Reopen the chat. The eight tools should be offered to the agent.
 
 ### Claude Code
 
