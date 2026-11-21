@@ -1,16 +1,133 @@
 # mcp — owner: Agent B (branch `agent/mcp`)
 
-Local **stdio MCP server** in Kotlin that exposes the board to coding agents.
+Local **stdio MCP server** in Kotlin. It puts the Agent Board in front of any
+MCP-capable coding agent as six tools, so the agent claims work, sees conflicts
+and hands over code without the developer relaying anything by hand.
 
-**Full instructions: [`docs/tasks/amit.md`](../docs/tasks/amit.md).** The build file and a starter server already work.
+Contract: [`docs/protocol.md`](../docs/protocol.md). Tasks: [`docs/tasks/amit.md`](../docs/tasks/amit.md).
 
-## To build
+## The six tools
 
-1. `./gradlew :mcp:installDist` → `mcp/build/install/mcp/bin/mcp`
-2. Implement the six tools in `docs/protocol.md`, each a thin wrapper around `BoardClient`.
-4. Start against `InMemoryBoardStore(DemoFixtures.comments())`, then switch to `GitHubIssueStore.fromEnvironment()`.
-5. Document how to connect it to the JetBrains AI agent (or Claude Code) on each laptop.
+| Tool | When the agent calls it |
+| --- | --- |
+| `get_board` | Start of every task, and before touching a new file. |
+| `claim_task` | Before editing. If `owned=false`, do not edit — talk to the owner. |
+| `send_message` | Ask what someone built, agree who continues, answer a question. |
+| `get_messages` | After a conflict, while waiting, and before finishing. |
+| `handoff_task` | Give a task away. Needs a pushed branch **and** commit. |
+| `release_task` | Drop a task so its files are free again. |
 
-**Gate:** two real agent sessions read a claim and exchange a message.
+## Build
 
-Do not edit `core` or `idea-plugin`. Ask on the coordination Issue for contract changes. Never commit tokens.
+Needs **JDK 21** (JDK 25 alone will not work — Gradle looks for 21 specifically).
+
+```bash
+./gradlew :mcp:installDist
+```
+
+That produces the launcher the agents run:
+
+```
+mcp/build/install/mcp/bin/mcp
+```
+
+Rebuild after every code change — the agents run the built copy, not the source.
+
+## Two modes
+
+The server picks its mode from the environment, with no flag to set:
+
+- **Live** — when `AGENT_BOARD_REPO`, `AGENT_BOARD_ISSUE` and `GITHUB_TOKEN` are all
+  set, it reads and writes real comments on the coordination Issue.
+- **Fixtures** — when any of them is missing, it serves demo data in memory and
+  **posts nothing to GitHub**. Good for trying things out safely.
+
+It logs which mode it chose to stderr at startup.
+
+| Variable | Example | Needed for live mode |
+| --- | --- | --- |
+| `AGENT_BOARD_REPO` | `agtheproducer/Huddle` | yes |
+| `AGENT_BOARD_ISSUE` | `1` | yes |
+| `GITHUB_TOKEN` | fine-grained token, Issues read/write | yes |
+| `AGENT_BOARD_AGENT` | `amit-claude` | no — defaults to `amit-claude` |
+
+Every laptop uses its **own** token and its **own** `AGENT_BOARD_AGENT`. Amit is
+`amit-claude`, Julieta is `julieta-claude`, her second agent is `julieta-codex`.
+Two agents sharing an id makes the board lie about who owns what.
+
+**Never commit a token.** Put it in the IDE's MCP settings or your shell profile.
+
+## Connect
+
+Use the **absolute** path to the launcher everywhere below. Print it with:
+
+```bash
+echo "$PWD/mcp/build/install/mcp/bin/mcp"
+```
+
+### JetBrains AI Assistant / Junie
+
+1. **Settings → Tools → AI Assistant → Model Context Protocol (MCP) → Add**.
+2. Choose a command-line server and fill in:
+   - **Command:** the absolute path you printed above
+   - **Arguments:** leave empty
+   - **Environment variables:** `AGENT_BOARD_REPO`, `AGENT_BOARD_ISSUE`,
+     `GITHUB_TOKEN`, `AGENT_BOARD_AGENT`
+3. For the agent in the AI chat to be allowed to use it, turn on
+   **Pass custom MCP servers** in **Settings → Tools → AI Assistant → Agents**.
+4. Reopen the chat. The six tools should be offered to the agent.
+
+### Claude Code
+
+One command, from the repo root:
+
+```bash
+claude mcp add agent-board --env AGENT_BOARD_REPO=agtheproducer/Huddle --env AGENT_BOARD_ISSUE=1 --env AGENT_BOARD_AGENT=amit-claude --env GITHUB_TOKEN=$GITHUB_TOKEN -- "$PWD/mcp/build/install/mcp/bin/mcp"
+```
+
+Export your token first (`export GITHUB_TOKEN=...`) so it never gets typed into a
+file. Check it registered with `claude mcp list`.
+
+Leave every `--env` off to run against fixtures instead.
+
+## Check it works
+
+The server speaks JSON-RPC on stdin/stdout. This asks it to claim a task:
+
+```bash
+BIN="$PWD/mcp/build/install/mcp/bin/mcp"
+{ printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}' \
+  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"claim_task","arguments":{"task_id":"dashboard","paths":["Dashboard.kt"],"branch":"agent/mcp"}}}'
+  sleep 5; } | "$BIN"
+```
+
+You should get three lines back, the last one containing `"owned":true`.
+
+**The `sleep 5` matters.** Tool calls are answered asynchronously. If stdin
+closes the moment the last line is written, the server has not answered yet and
+you see only the `initialize` reply — which looks like a broken tool call but is
+just the test hanging up too early. Real clients hold the connection open, so
+this only ever bites in hand-written shell tests.
+
+Press `Ctrl-C` to stop it.
+
+## Known issue
+
+When stdin reaches end-of-file, the server does **not** exit — it waits forever
+and has to be killed. Neither `session.onClose` nor `transport.onClose` fires on
+EOF in Kotlin MCP SDK 0.16.0, so there is no clean fix in our code.
+
+It does not affect normal use: IDEs and Claude Code terminate the process when
+they disconnect. It only shows up when piping input by hand. If you leave stray
+servers running:
+
+```bash
+pkill -f "install/mcp"
+```
+
+## Scope
+
+Do not edit `core` or `idea-plugin` from this branch. Ask on the coordination
+Issue for contract changes.
