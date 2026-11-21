@@ -35,6 +35,7 @@ data class BoardEvent(
 )
 
 /** A raw GitHub Issue comment, before parsing. */
+@Serializable
 data class RawComment(
     val id: Long,
     val createdAt: String,

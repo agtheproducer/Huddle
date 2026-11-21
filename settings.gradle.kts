@@ -27,3 +27,6 @@ include(":cli")
 
 // Read-only web view of the board, for demos and projectors (Amit's agent, branch agent/web).
 include(":web")
+
+// Kotlin/JS server for Vercel deployment — real-time SSE backend (Amit's agent).
+include(":server")

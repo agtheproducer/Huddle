@@ -1,8 +1,10 @@
 package com.agentboard.mcp
 
 import com.agentboard.core.BoardClient
+import com.agentboard.core.BoardStore
 import com.agentboard.core.DemoFixtures
 import com.agentboard.core.GitHubIssueStore
+import com.agentboard.core.HttpBoardStore
 import com.agentboard.core.InMemoryBoardStore
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
@@ -26,12 +28,34 @@ import kotlinx.serialization.json.putJsonObject
 
 private val LIVE_VARS = listOf("AGENT_BOARD_REPO", "AGENT_BOARD_ISSUE", "GITHUB_TOKEN")
 
+/**
+ * Create the BoardStore based on environment variables.
+ * Priority: AGENT_BOARD_HTTP_URL > GitHub vars > fixtures
+ */
+fun createStore(env: Map<String, String> = System.getenv()): BoardStore {
+    // HTTP server takes priority if configured
+    val httpUrl = env["AGENT_BOARD_HTTP_URL"]
+    if (!httpUrl.isNullOrBlank()) {
+        return HttpBoardStore(httpUrl)
+    }
+    // Fall back to GitHub if configured
+    val live = LIVE_VARS.all { !env[it].isNullOrBlank() }
+    if (live) {
+        return GitHubIssueStore.fromEnvironment(env)
+    }
+    // Default to demo fixtures
+    return InMemoryBoardStore(DemoFixtures.comments())
+}
+
 /** Live GitHub Issue when the env vars are set, otherwise the demo fixtures in memory. */
 fun createTools(env: Map<String, String> = System.getenv()): BoardTools {
     val agent = env["AGENT_BOARD_AGENT"]?.takeIf { it.isNotBlank() } ?: "amit-claude"
-    val live = LIVE_VARS.all { !env[it].isNullOrBlank() }
-    val store = if (live) GitHubIssueStore.fromEnvironment(env) else InMemoryBoardStore(DemoFixtures.comments())
-    val mode = if (live) "live: ${env["AGENT_BOARD_REPO"]} issue #${env["AGENT_BOARD_ISSUE"]}" else "fixtures (demo data, nothing is posted to GitHub)"
+    val store = createStore(env)
+    val mode = when {
+        !env["AGENT_BOARD_HTTP_URL"].isNullOrBlank() -> "http: ${env["AGENT_BOARD_HTTP_URL"]}"
+        LIVE_VARS.all { !env[it].isNullOrBlank() } -> "live: ${env["AGENT_BOARD_REPO"]} issue #${env["AGENT_BOARD_ISSUE"]}"
+        else -> "fixtures (demo data, nothing is posted to GitHub)"
+    }
     return BoardTools(BoardClient(store, agent), mode)
 }
 
