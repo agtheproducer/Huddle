@@ -164,6 +164,14 @@ class Dashboard(
         // The latest handoff is the moment the demo is about, so keep it above the fold.
         state.timeline.lastOrNull { it.event.type == EventType.HANDOFF }?.let { content.add(handoffCard(it, latest = true)) }
 
+        // Newest events first, so a message arriving during a live demo is visible without scrolling.
+        // The full timeline below stays oldest-first.
+        val recent = state.timeline.takeLast(RECENT_COUNT).asReversed()
+        if (recent.isNotEmpty()) {
+            content.add(sectionTitle("Recent"))
+            recent.forEach { p -> content.add(timelineRow(p)) }
+        }
+
         content.add(sectionTitle("Agents"))
         if (state.agents.isEmpty()) content.add(muted("No agents yet."))
         state.agents.values.sortedBy { it.agent }.forEach { a ->
@@ -309,6 +317,7 @@ class Dashboard(
         val CONFLICT_BORDER = JBColor(Color(0xE8833A), Color(0xD9822B))
         val HANDOFF_BG = JBColor(Color(0xE8F2FF), Color(0x25324A))
         const val REFRESH_MS = 5_000
+        const val RECENT_COUNT = 3
         val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault())
         val CLOCK_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault())
 
