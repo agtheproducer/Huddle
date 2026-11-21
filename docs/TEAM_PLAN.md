@@ -2,7 +2,7 @@
 
 **Goal for the demo:** two laptops, real agents, one board. A duplicate claim shows a conflict, a handoff carries a real pushed commit, and the Agent Board tool window in IntelliJ shows it all.
 
-**Task files:** Julieta's agent reads [`docs/tasks/julieta.md`](tasks/julieta.md); Amit and his agent read [`docs/tasks/amit.md`](tasks/amit.md).
+**Task files:** Julieta's Claude reads [`docs/tasks/julieta.md`](tasks/julieta.md), Julieta's Codex reads [`docs/tasks/codex.md`](tasks/codex.md), Amit and his agent read [`docs/tasks/amit.md`](tasks/amit.md).
 
 ## Already done (on `main`)
 
@@ -18,7 +18,7 @@
 | --- | --- | --- | --- |
 | **Amit** | Claude (Amit's account) | `mcp` on `agent/mcp` | MCP server with the 6 board tools; connect it to the agents on both laptops. Amit is also **integration owner and pitch lead**. |
 | **Julieta** | Claude (teammate's account) | `idea-plugin` on `agent/idea-plugin` | IntelliJ tool window: agent cards, task cards, conflict banner, timeline, handoff card. Hardest part: start first. |
-| Either | Codex | `core` on `agent/core` | Extras only: folder/prefix path matching, more tests, and the fallback desktop board if the plugin is blocked. |
+| **Julieta** | Codex (Julieta's account) | `core` + `cli` on `agent/core` | Folder overlap in conflicts, a command-line tool with `replay-demo` (the demo safety net), and the fallback board window if the plugin is blocked. Runs in its own worktree on Julieta's laptop. |
 
 One folder, one agent: never let two agents edit the same working directory. Use a separate clone or `git worktree` per agent.
 
@@ -58,8 +58,8 @@ For each extra agent on the same laptop: `git worktree add ../agent-board-codex 
 **Julieta's Claude (Agent C, idea-plugin):**
 > You are Agent C on Agent Board. Read `docs/PROJECT_BRIEF.md` and `docs/protocol.md` fully. Work only in the `idea-plugin` module on branch `agent/idea-plugin`. Create an IntelliJ IDEA plugin in Kotlin (IntelliJ Platform Gradle Plugin, official template) depending on `project(":core")`, and add `include(":idea-plugin")` to `settings.gradle.kts`. Build an **Agent Board** tool window showing agent cards, task cards, a conflict banner, a message timeline and a handoff card with the commit. First render `DemoFixtures.state(...)` for each of the four stages, then read live data with `BoardClient(GitHubIssueStore.fromEnvironment(), agent)` and refresh every few seconds. Prefer native IntelliJ UI components. Do not edit `core` or `mcp`. Commit and push small working steps; after each milestone, comment on the coordination Issue with branch, commit, changed files and how to run it.
 
-**Codex (core extras / fallback):**
-> You are working on Agent Board, branch `agent/core`, module `core` only. Read `docs/protocol.md`. Keep all existing tests passing. Add folder/prefix path overlap (a claim on `ui/` conflicts with `ui/Dashboard.kt`) behind the existing rules, with tests. If asked, build a fallback Kotlin desktop window that shows `BoardClient.board()`. Do not change the event format without asking on the coordination Issue.
+**Julieta's Codex:**
+> Read `AGENTS.md`. You are Julieta's Codex agent (`codex`). Do the tasks in `docs/tasks/codex.md`, starting with Step 0 (your own worktree).
 
 ## Questions to settle now
 

@@ -8,7 +8,7 @@ This is **Agent Board**: a shared board where different developers' AI coding ag
 | --- | --- | --- | --- |
 | Julieta's agent | `julieta-claude` | [`docs/tasks/julieta.md`](docs/tasks/julieta.md) | `idea-plugin` on `agent/idea-plugin` |
 | Amit's agent | `amit-claude` | [`docs/tasks/amit.md`](docs/tasks/amit.md) | `mcp` on `agent/mcp` |
-| Codex | `codex` | [`docs/TEAM_PLAN.md`](docs/TEAM_PLAN.md) (Codex prompt) | `core` on `agent/core` |
+| Julieta's Codex | `codex` | [`docs/tasks/codex.md`](docs/tasks/codex.md) | `core` + `cli` on `agent/core`, in its own worktree |
 
 If you don't know who you are working for, ask the human before editing.
 
