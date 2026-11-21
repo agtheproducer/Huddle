@@ -53,10 +53,14 @@ class AutoReply(
     fun onBoard(state: BoardState, config: BoardConfig, source: BoardSource) {
         val agent = config.agent
         if (!enabled || agent.isBlank() || running != null) return
+        // Wake for the agent itself, and for its human ("amit-claude" → "amit"): teammates' agents often
+        // address the person ("Amit, please claim calc-frontend"), and that work is the agent's to pick up.
+        val human = humanOf(agent)
+        val addressees = setOf(agent, human)
         val fresh = state.timeline.filter { p ->
             p.commentId > lastHandled &&
-                p.event.toAgent == agent &&
-                p.event.agent != agent &&
+                p.event.toAgent in addressees &&
+                p.event.agent !in addressees &&
                 p.event.type in WAKE_TYPES &&
                 !(p.event.message ?: "").startsWith(ACK_PREFIX)
         }
@@ -150,12 +154,12 @@ class AutoReply(
     }
 
     private fun prompt(messages: List<PostedEvent>, config: BoardConfig): String {
-        val human = config.agent.substringBefore('-')
+        val human = humanOf(config.agent)
         val inbox = messages.joinToString("\n") { p ->
             val e = p.event
             val body = e.message ?: e.summary ?: ""
             val extra = listOfNotNull(e.taskId?.let { "task $it" }, e.branch?.let { "branch $it" }, e.commit?.let { "commit $it" })
-            "- #${p.commentId} [${e.type}] from ${e.agent}${if (extra.isEmpty()) "" else " (${extra.joinToString()})"}: $body"
+            "- #${p.commentId} [${e.type}] from ${e.agent} to ${e.toAgent}${if (extra.isEmpty()) "" else " (${extra.joinToString()})"}: $body"
         }
         return """
             You are ${config.agent}, $human's coding agent on the Agent Board for this repository.
@@ -167,7 +171,10 @@ class AutoReply(
             2. Answer each event with send_message to its sender. Be brief and concrete.
             3. If someone asks you to do work: claim_task the files before editing. If owned=false, do not edit; agree with the owner via send_message.
                Commit and push only if asked. Hand work over only with handoff_task and a pushed branch and commit.
-            4. Never answer pure acknowledgements, thanks or messages starting with "$ACK_PREFIX". No small talk. If nothing needs an answer, stop without posting.
+            4. Events addressed to "$human" are for your human. Pick up the work in them (claim tasks, build, answer
+               questions about the project) and reply as ${config.agent}. Do not answer personal things for $human
+               (meetings, coffee, opinions, promises about his time): reply once that $human will answer himself.
+            5. Never answer pure acknowledgements, thanks or messages starting with "$ACK_PREFIX". No small talk. If nothing needs an answer, stop without posting.
             The project rules are in AGENTS.md.
         """.trimIndent()
     }
@@ -187,7 +194,11 @@ class AutoReply(
         append('"')
         s.forEach { c ->
             when (c) {
-                '"' -> append("\\\""); '\\' -> append("\\\\"); '\n' -> append("\\n"); '\r' -> append("\\r"); '\t' -> append("\\t")
+                '"' -> append("\\\"")
+                '\\' -> append("\\\\")
+                '\n' -> append("\\n")
+                '\r' -> append("\\r")
+                '\t' -> append("\\t")
                 else -> if (c < ' ') append("\\u%04x".format(c.code)) else append(c)
             }
         }
@@ -195,6 +206,9 @@ class AutoReply(
     }
 
     private companion object {
+        /** The person behind an agent id: "amit-claude" → "amit", the name the message bar posts as. */
+        fun humanOf(agent: String) = agent.substringBefore('-').ifBlank { "human" }
+
         val LOG = Logger.getInstance(AutoReply::class.java)
         val WAKE_TYPES = setOf(EventType.MESSAGE, EventType.HANDOFF, EventType.CONFLICT)
         const val ACK_PREFIX = "[auto]"
