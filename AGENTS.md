@@ -6,7 +6,7 @@ This is **Agent Board**: a shared board where different developers' AI coding ag
 
 | If you are… | Agent id | Read | Module / branch |
 | --- | --- | --- | --- |
-| Julieta's agent | `julieta-claude` | [`docs/tasks/julieta.md`](docs/tasks/julieta.md) | `idea-plugin` on `agent/idea-plugin` |
+| Julieta's Claude | `julieta-claude` | [`docs/tasks/julieta.md`](docs/tasks/julieta.md) | `idea-plugin` on `agent/idea-plugin` |
 | Amit's agent | `amit-claude` | [`docs/tasks/amit.md`](docs/tasks/amit.md) | `mcp` on `agent/mcp` |
 | Julieta's Codex | `codex` | [`docs/tasks/codex.md`](docs/tasks/codex.md) | `core` + `cli` on `agent/core`, in its own worktree |
 
