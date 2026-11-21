@@ -48,8 +48,10 @@ data class BoardState(
     val openConflicts: List<Conflict> get() = conflicts.filter { !it.resolved }
     val activeTasks: List<TaskState> get() = tasks.values.filter { it.isActive }
 
-    /** Who currently owns [path], if anyone. Exact match for the MVP. */
-    fun ownerOfPath(path: String): TaskState? = activeTasks.firstOrNull { path in it.paths }
+    /** Who currently owns [path], including claims on a containing directory. */
+    fun ownerOfPath(path: String): TaskState? = activeTasks.firstOrNull { task ->
+        task.paths.any { PathOverlap.overlaps(path, it) }
+    }
 
     companion object {
         val EMPTY = BoardState(emptyMap(), emptyMap(), emptyList(), emptyList(), emptyList(), 0)
