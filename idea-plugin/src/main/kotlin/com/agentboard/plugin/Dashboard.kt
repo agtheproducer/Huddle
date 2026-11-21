@@ -34,6 +34,8 @@ import javax.swing.JButton
 import javax.swing.JComponent
 import javax.swing.Scrollable
 import javax.swing.SwingConstants
+import javax.swing.Timer
+import java.util.concurrent.atomic.AtomicReference
 import javax.swing.text.DefaultCaret
 
 /**
@@ -64,8 +66,14 @@ class Dashboard(
 
     private var currentSource: BoardSource? = null
     @Volatile private var disposed = false
+    /** The source with a load in flight, if any. Switching stage starts a new load right away. */
+    private val inFlight = AtomicReference<BoardSource?>(null)
+    private var lastRendered: BoardState? = null
+
+    /** Polls the live Issue every 5 seconds; fixtures never change, so they are not polled. */
+    private val refreshTimer = Timer(REFRESH_MS) { if (currentSource is LiveSource) reload() }
     private val currentAgent: String = System.getenv("AGENT_BOARD_AGENT")?.takeIf { it.isNotBlank() } ?: LiveSource.DEFAULT_AGENT
-    private val repo: String = System.getenv("AGENT_BOARD_REPO")?.takeIf { it.isNotBlank() } ?: "agtheproducer/impact_ledger"
+    private val repo: String = System.getenv("AGENT_BOARD_REPO")?.takeIf { it.isNotBlank() } ?: "agtheproducer/Huddle"
 
     init {
         val controls = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(6), JBUI.scale(4))).apply {
@@ -82,7 +90,11 @@ class Dashboard(
 
         stageBox.addActionListener { selectSource(stageBox.selectedIndex) }
         refreshButton.addActionListener { reload() }
-        Disposer.register(parentDisposable) { disposed = true }
+        Disposer.register(parentDisposable) {
+            disposed = true
+            refreshTimer.stop()
+        }
+        refreshTimer.start()
         // Optional AGENT_BOARD_STAGE (e.g. "conflict" or "live") picks the stage shown at startup.
         val initial = System.getenv("AGENT_BOARD_STAGE")
             ?.let { wanted -> sourceNames.indexOfFirst { it.equals(wanted, ignoreCase = true) } }
@@ -97,22 +109,41 @@ class Dashboard(
             null
         }
         scrollToTopOnRender = true
+        lastRendered = null
         reload()
     }
 
-    /** Loads the current source off the UI thread, then renders on it. */
+    /**
+     * Loads the current source off the UI thread, then renders on it. GitHub is never called on the UI thread.
+     * The same source is not loaded twice at once, so a slow network cannot pile up requests.
+     */
     fun reload() {
         val source = currentSource ?: return
+        if (inFlight.getAndSet(source) === source) return
         ApplicationManager.getApplication().executeOnPooledThread {
-            val result = runCatching { source.load() }
+            val result = try {
+                runCatching { source.load() }
+            } finally {
+                inFlight.compareAndSet(source, null)
+            }
             ApplicationManager.getApplication().invokeLater {
                 if (disposed || source !== currentSource) return@invokeLater
                 result.fold(
-                    onSuccess = { render(it); statusLabel.text = "" },
-                    onFailure = { showError("Could not load board: ${it.message}") },
+                    onSuccess = { state ->
+                        // Skip the rebuild when nothing changed, so a 5-second poll does not flicker or move the scroll.
+                        if (state != lastRendered) render(state)
+                        showStatus("Last updated ${CLOCK_FORMAT.format(Instant.now())}")
+                    },
+                    // Keep the last good board on screen and say what went wrong.
+                    onFailure = { showError("Could not load board: ${it.message ?: it.javaClass.simpleName}") },
                 )
             }
         }
+    }
+
+    private fun showStatus(message: String) {
+        statusLabel.text = message
+        statusLabel.foreground = JBColor.GRAY
     }
 
     private fun showError(message: String) {
@@ -122,7 +153,7 @@ class Dashboard(
 
     /** Rebuilds every section from [state]. Call on the UI thread. */
     fun render(state: BoardState) {
-        statusLabel.foreground = JBColor.GRAY
+        lastRendered = state
         content.removeAll()
 
         state.openConflicts.forEach { c ->
@@ -277,7 +308,9 @@ class Dashboard(
         val CONFLICT_BG = JBColor(Color(0xFFF1E0), Color(0x4A3424))
         val CONFLICT_BORDER = JBColor(Color(0xE8833A), Color(0xD9822B))
         val HANDOFF_BG = JBColor(Color(0xE8F2FF), Color(0x25324A))
+        const val REFRESH_MS = 5_000
         val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault())
+        val CLOCK_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault())
 
         fun fileName(path: String) = path.substringAfterLast('/')
 
