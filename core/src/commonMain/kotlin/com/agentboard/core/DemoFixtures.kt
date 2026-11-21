@@ -39,7 +39,8 @@ object DemoFixtures {
         events.take(stage.eventCount).mapIndexed { i, e ->
             RawComment(
                 id = (i + 1).toLong(),
-                createdAt = "2026-11-22T10:%02d:00Z".format(i),
+                // padStart rather than String.format, which is JVM-only.
+                createdAt = "2026-11-22T10:${i.toString().padStart(2, '0')}:00Z",
                 author = e.agent,
                 body = EventCodec.toCommentBody(e),
             )

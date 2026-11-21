@@ -11,7 +11,9 @@ object EventCodec {
         prettyPrint = false
     }
 
-    private val fenced = Regex("```(?:json)?\\s*\\n(.*?)\\n?```", RegexOption.DOT_MATCHES_ALL)
+    // [\s\S] rather than "." plus DOT_MATCHES_ALL: that option is JVM-only, and this
+    // matches the same thing on every target.
+    private val fenced = Regex("```(?:json)?\\s*\\n([\\s\\S]*?)\\n?```")
 
     /** The comment body an agent posts: the event as JSON in a fenced block. */
     fun toCommentBody(event: BoardEvent): String =

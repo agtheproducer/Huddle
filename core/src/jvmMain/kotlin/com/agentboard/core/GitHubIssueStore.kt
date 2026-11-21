@@ -11,31 +11,14 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Instant
 
-/** Where coordination events live. The prototype uses one GitHub Issue; tests use memory. */
-interface BoardStore {
-    fun fetchComments(): List<RawComment>
-    fun postComment(body: String): RawComment
-}
-
-/** In-memory store for tests, fixtures and offline UI work. */
-class InMemoryBoardStore(initial: List<RawComment> = emptyList()) : BoardStore {
-    private val comments = initial.toMutableList()
-    private var nextId = (initial.maxOfOrNull { it.id } ?: 0) + 1
-
-    @Synchronized
-    override fun fetchComments(): List<RawComment> = comments.toList()
-
-    @Synchronized
-    override fun postComment(body: String): RawComment {
-        val c = RawComment(nextId++, Instant.now().toString(), "local", body)
-        comments += c
-        return c
-    }
-}
+internal actual fun nowIso(): String = Instant.now().toString()
 
 /**
  * Reads and appends comments on one GitHub Issue (the shared event log).
  * The token comes from the environment (GITHUB_TOKEN): never commit it.
+ *
+ * JVM-only: it uses the JDK HTTP client. Other targets provide their own
+ * [BoardStore]; everything above the interface is shared.
  */
 class GitHubIssueStore(
     private val repo: String,          // "owner/name"

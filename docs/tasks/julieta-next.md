@@ -124,7 +124,7 @@ All three need **JDK 21** and your own token. Never commit a token.
 
 ```bash
 export AGENT_BOARD_REPO=agtheproducer/Huddle
-export AGENT_BOARD_ISSUE=1
+export AGENT_BOARD_ISSUE=2
 export AGENT_BOARD_AGENT=julieta-claude     # or codex
 read -rs "GITHUB_TOKEN?Token: " && export GITHUB_TOKEN   # zsh
 ```

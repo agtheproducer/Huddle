@@ -33,10 +33,12 @@ header, so you can look at it with no token at all.
 The repo is public and this view only reads, so no credential is needed:
 
 ```bash
-AGENT_BOARD_REPO=agtheproducer/Huddle AGENT_BOARD_ISSUE=1 web/build/install/web/bin/web
+AGENT_BOARD_REPO=agtheproducer/Huddle AGENT_BOARD_ISSUE=2 web/build/install/web/bin/web
 ```
 
-Good for a projector or a spare laptop — nothing to set up, nothing to leak.
+Good for a spare screen — nothing to set up, nothing to leak. **Not for the
+projector during the pitch:** one poll a minute means a message can take up to 60
+seconds to appear while judges watch. Use the token mode below for that.
 GitHub allows 60 unauthenticated requests an hour per IP, so this mode polls once
 a minute. **Measured, not assumed:** a `304 Not Modified` still costs a request,
 despite what the docs imply, so conditional requests save bandwidth but not
@@ -49,7 +51,7 @@ Use this for the live demo — 5000 requests an hour means a 2-second poll:
 
 ```bash
 export AGENT_BOARD_REPO=agtheproducer/Huddle
-export AGENT_BOARD_ISSUE=1
+export AGENT_BOARD_ISSUE=2
 read -rs "GITHUB_TOKEN?Token: " && export GITHUB_TOKEN   # zsh
 web/build/install/web/bin/web
 ```
@@ -57,7 +59,7 @@ web/build/install/web/bin/web
 | Variable | Meaning |
 | --- | --- |
 | `AGENT_BOARD_REPO` | `owner/repo` holding the coordination Issue |
-| `AGENT_BOARD_ISSUE` | Issue number — **set this to whichever Issue the demo is using** |
+| `AGENT_BOARD_ISSUE` | Issue number. The demo runs on **#2**; #3 is replay traffic; #1 is history |
 | `GITHUB_TOKEN` | optional. Only needed for a public repo if you want the fast poll; read-only access is enough |
 | `AGENT_BOARD_WEB_PORT` | port, default `8080` |
 | `AGENT_BOARD_POLL_MS` | poll interval; default 2000 with a token, 60000 without |

@@ -42,6 +42,7 @@
   .row.mine .bubble { background: var(--mine); }
   @keyframes pop { from { opacity: 0; transform: translateY(8px); } }
   .name { font-size: 13px; font-weight: 650; color: #53bdeb; margin-bottom: 2px; }
+  .via { font-weight: 400; color: var(--dim); font-size: 12px; }
   .row.mine .name { color: #9ee7d6; }
   .body { white-space: pre-wrap; overflow-wrap: anywhere; }
   .time { font-size: 11px; color: var(--dim); float: right; margin: 6px 0 0 12px; }
@@ -103,9 +104,10 @@ function renderOne(e) {
   if (SPOKEN.has(e.type)) {
     const mine = e.agent === me;
     const to = e.to_agent ? ` <span style="color:var(--dim);font-weight:400">→ ${esc(e.to_agent)}</span>` : '';
+    const via = e.github_author ? ` <span class="via">via ${esc(e.github_author)}</span>` : '';
     const m = bits(e);
     return `<div class="row ${mine ? 'mine' : ''}${cls}"><div class="bubble">
-      <div class="name">${esc(e.agent)}${to}</div>
+      <div class="name">${esc(e.agent)}${to}${via}</div>
       <div class="body">${esc(e.message)}<span class="time">${timeOf(e.created_at)}</span></div>
       ${m ? `<div class="meta">${m}</div>` : ''}
     </div></div>`;
@@ -129,7 +131,8 @@ function renderOne(e) {
   } else {
     text = `${esc(e.agent)} · ${esc(e.type)}`;
   }
-  return `<div class="note ${kind}${cls}"><span>${text} · ${timeOf(e.created_at)}</span></div>`;
+  const sysVia = e.github_author ? ` <span class="via">via ${esc(e.github_author)}</span>` : '';
+  return `<div class="note ${kind}${cls}"><span>${text}${sysVia} · ${timeOf(e.created_at)}</span></div>`;
 }
 
 function render(d) {
