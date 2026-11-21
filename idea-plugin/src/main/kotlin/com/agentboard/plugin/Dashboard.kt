@@ -15,6 +15,7 @@ import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.util.Disposer
 import com.intellij.ui.HyperlinkLabel
 import com.intellij.ui.JBColor
+import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
 import com.intellij.ui.components.JBScrollPane
@@ -67,6 +68,24 @@ class Dashboard(
         putClientProperty("JButton.buttonType", "square")
     }
     private val statusLabel = plainLabel("").apply { foreground = JBColor.GRAY }
+
+    /** Off by default: when on, a message for this laptop's agent starts Claude Code to answer it. */
+    private val autoReplyBox = JBCheckBox("Auto-reply").apply {
+        toolTipText = "Let this laptop's agent answer messages addressed to it, by running Claude Code " +
+            "in the background. Each answer is a Claude run and spends credits."
+    }
+    private val autoLabel = plainLabel("").apply {
+        foreground = JBUI.CurrentTheme.Focus.focusColor()
+        isVisible = false
+    }
+    private val autoReply = AutoReply(
+        project,
+        onStatus = { msg ->
+            autoLabel.text = msg ?: ""
+            autoLabel.isVisible = msg != null
+        },
+        onRunFinished = { reload() },
+    )
     private val content = ScrollablePanel()
     private val scrollPane = JBScrollPane(content).apply { border = JBUI.Borders.empty() }
     private var scrollToTopOnRender = true
@@ -109,15 +128,18 @@ class Dashboard(
             add(stageBox)
             add(refreshButton)
             add(settingsButton)
+            add(autoReplyBox)
         }
         // Status sits on its own line so the toolbar fits a narrow tool window.
         val toolbar = JBPanel<JBPanel<*>>(BorderLayout()).apply {
             add(controls, BorderLayout.NORTH)
+            add(autoLabel.apply { border = JBUI.Borders.empty(0, 8, 2, 8) }, BorderLayout.CENTER)
             add(statusLabel.apply { border = JBUI.Borders.empty(0, 8, 2, 8) }, BorderLayout.SOUTH)
         }
         add(toolbar, BorderLayout.NORTH)
         add(scrollPane, BorderLayout.CENTER)
         add(composer(), BorderLayout.SOUTH)
+        autoReplyBox.addActionListener { autoReply.setEnabled(autoReplyBox.isSelected, lastRendered) }
         sendButton.addActionListener { send() }
         messageField.addActionListener { send() }
 
@@ -132,6 +154,7 @@ class Dashboard(
             })
         Disposer.register(parentDisposable) {
             disposed = true
+            autoReply.dispose()
             refreshTimer.stop()
         }
         refreshTimer.start()
@@ -221,6 +244,7 @@ class Dashboard(
                     onSuccess = { state ->
                         // Skip the rebuild when nothing changed, so a 5-second poll does not flicker or move the scroll.
                         if (state != lastRendered) render(state)
+                        autoReply.onBoard(state, config, source)
                         showStatus(
                             if (source is LiveSource || source is HttpSource || config.liveAvailable || config.httpAvailable) "Last updated ${CLOCK_FORMAT.format(Instant.now())}"
                             else "Demo stages only. Set up the live board with ⚙.",
@@ -250,6 +274,13 @@ class Dashboard(
     private fun updateComposer() {
         val live = currentSource is HttpSource || currentSource is LiveSource
         listOf(toBox, messageField, sendButton).forEach { it.isEnabled = live && !sending }
+        autoReplyBox.isEnabled = live && currentAgent.isNotBlank()
+        autoReplyBox.toolTipText = if (currentAgent.isBlank()) "Set your agent id in ⚙ to use auto-reply." else
+            "Let $currentAgent answer messages addressed to it, by running Claude Code in the background. Each answer spends Claude credits."
+        if (!live && autoReplyBox.isSelected) {
+            autoReplyBox.isSelected = false
+            autoReply.setEnabled(false, null)
+        }
         senderLabel.text = if (live) "You post as \"$humanSender\"" else "Switch to HTTP or Live to message the agents."
     }
 
