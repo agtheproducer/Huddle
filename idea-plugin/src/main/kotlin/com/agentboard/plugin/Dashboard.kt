@@ -180,6 +180,12 @@ class Dashboard(
                 add(text("Task: ${a.activeTasks.joinToString().ifEmpty { "none" }}"))
                 add(text("Branch: ${a.branch ?: "–"}"))
                 add(muted("Last seen ${formatTime(a.lastSeen)}"))
+                val accounts = accountsFor(state, a.agent)
+                when {
+                    accounts.size == 1 -> add(muted("Posts via ${accounts.single()}"))
+                    // The agent field is self-declared, so one agent posting from several accounts is worth flagging.
+                    accounts.size > 1 -> add(text("Posts via ${accounts.joinToString()}: more than one account", CONFLICT_BORDER))
+                }
             })
         }
 
@@ -217,7 +223,7 @@ class Dashboard(
             border = JBUI.Borders.empty(3, 8)
             isOpaque = false
             alignmentX = Component.LEFT_ALIGNMENT
-            add(muted("${formatTime(p.createdAt)}  $who  [${typeLabel(e.type)}]"))
+            add(muted("${formatTime(p.createdAt)}  $who${via(p)}  [${typeLabel(e.type)}]"))
             if (body.isNotBlank()) add(text(body))
         }.fillWidth()
     }
@@ -227,7 +233,7 @@ class Dashboard(
         val title = (if (latest) "Latest handoff: " else "Handoff: ") + "${e.agent} → ${e.toAgent ?: "?"}"
         return card(background = HANDOFF_BG) {
             add(text(title).apply { font = JBFont.label().asBold() })
-            add(muted("${formatTime(p.createdAt)} · task ${e.taskId ?: "?"}"))
+            add(muted("${formatTime(p.createdAt)} · task ${e.taskId ?: "?"}${via(p)}"))
             e.summary?.let { add(text(it)) }
             add(text("Branch: ${e.branch ?: "–"}"))
             e.commit?.let { commit ->
@@ -239,6 +245,20 @@ class Dashboard(
             }
         }
     }
+
+    // ---- who really posted ----
+    // `agent` is whatever the poster typed; `author` is the GitHub account that posted the comment.
+
+    /** " · via login" when the GitHub account is known and differs from the agent name, else "". */
+    private fun via(p: PostedEvent): String =
+        p.author.takeIf { it.isNotBlank() && it != p.event.agent }?.let { " · via $it" } ?: ""
+
+    /** GitHub accounts that posted as [agent], in first-seen order. Fixtures and memory stores have none. */
+    private fun accountsFor(state: BoardState, agent: String): List<String> =
+        state.timeline.filter { it.event.agent == agent }
+            .map { it.author }
+            .filter { it.isNotBlank() && it != agent && it != "local" }
+            .distinct()
 
     // ---- small building blocks ----
 
