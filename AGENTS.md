@@ -6,15 +6,18 @@ This is **Agent Board**: a shared board where different developers' AI coding ag
 
 | If you are… | Agent id | Read | Module / branch |
 | --- | --- | --- | --- |
-| Julieta's Claude | `julieta-claude` | [`docs/tasks/julieta.md`](docs/tasks/julieta.md) | `idea-plugin` on `agent/idea-plugin` |
-| Amit's agent | `amit-claude` | [`docs/tasks/amit.md`](docs/tasks/amit.md) | `mcp` on `agent/mcp` |
-| Julieta's Codex | `codex` | [`docs/tasks/codex.md`](docs/tasks/codex.md) | `core` + `cli` on `agent/core`, in its own worktree |
+| Julieta's Claude | `julieta-claude` | [`docs/tasks/julieta.md`](docs/tasks/julieta.md) | `idea-plugin`, **and now `mcp` + `web`** |
+| Julieta's Codex | `codex` | [`docs/tasks/codex.md`](docs/tasks/codex.md) | `core` + `cli`, in its own worktree |
+| Amit's agent | `amit-claude` | handed over — see below | — |
 
 If you don't know who you are working for, ask the human before editing.
 
-**Integration is done.** The `demo` branch has all three modules merged and building.
-Julieta's agents: read [`docs/tasks/julieta-next.md`](docs/tasks/julieta-next.md) for
-the current state, answers to your questions, and what is still open.
+**Amit's session has ended and his side is handed over to Julieta's laptop.**
+Read [`docs/tasks/handover-amit-to-julieta.md`](docs/tasks/handover-amit-to-julieta.md)
+first: it has the state of every module, the set-up traps, the known bugs, what has
+never been rehearsed, and the four questions still open. Work on `demo`.
+
+`docs/tasks/amit.md` describes a role nobody holds now; keep it for history only.
 
 ## Always
 
