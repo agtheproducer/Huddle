@@ -19,3 +19,11 @@ application {
     // stdout carries the MCP protocol: no startup banner
     applicationDefaultJvmArgs = listOf("-Dkotlin-logging.logStartupMessage=false")
 }
+
+dependencies {
+    testImplementation(kotlin("test"))
+}
+
+tasks.test {
+    useJUnitPlatform()
+}
