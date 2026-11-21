@@ -2,8 +2,8 @@
 
 ## Part 1: for Amit himself (do first, ~20 min)
 
-- [ ] **Create the coordination Issue** in `agtheproducer/impact_ledger`: title "Agent Board coordination", body "Board events. Don't delete comments." Note its number.
-- [ ] Replace `#[ISSUE_NUMBER]` in `docs/protocol.md` with that number; commit to `main` and push.
+- [x] **Coordination Issue created:** [#1](https://github.com/agtheproducer/Huddle/issues/1). A duplicate (#2) was opened a minute later; close it as a duplicate of #1.
+- [x] Issue number set in `docs/protocol.md` and pushed to `main`.
 - [ ] **Create a GitHub token** for yourself (GitHub → Settings → Developer settings → Fine-grained tokens) with access to this repo: Issues read/write, Contents read/write. Ask Julieta to make her own. Never paste tokens in the repo or the Issue.
 - [ ] Post a test comment on the Issue from each laptop's token (the gate for Phase 0).
 - [ ] Send Julieta: the repo link, the Issue number, and `docs/tasks/julieta.md`.
@@ -37,7 +37,7 @@
 ### Step 0: set up
 
 ```bash
-git clone https://github.com/agtheproducer/impact_ledger.git agent-board
+git clone https://github.com/agtheproducer/Huddle.git agent-board
 cd agent-board && git checkout agent/mcp
 ./gradlew :core:test :mcp:installDist
 ```

@@ -33,7 +33,7 @@ Data you display comes from `com.agentboard.core.BoardState`:
 ## Step 0: set up (10 min)
 
 ```bash
-git clone https://github.com/agtheproducer/impact_ledger.git agent-board
+git clone https://github.com/agtheproducer/Huddle.git agent-board
 cd agent-board
 git checkout agent/idea-plugin
 ./gradlew :core:test :idea-plugin:buildPlugin     # first run downloads IntelliJ (~1–2 GB)
@@ -63,7 +63,7 @@ Build a `Dashboard(project: Project, parentDisposable: Disposable) : JBPanel<...
 3. **Agents section:** one card per agent: name, active task(s), branch, last seen.
 4. **Tasks section:** one card per task: task id, owner (or "free"), status, paths (file names), branch.
 5. **Timeline section** (scrollable, newest at the bottom): one row per event: time, agent → to_agent, type icon or label, message.
-   - **Handoff rows are cards:** summary, branch, commit, and a clickable link `https://github.com/agtheproducer/impact_ledger/commit/<commit>` opened with `BrowserUtil.browse(...)`.
+   - **Handoff rows are cards:** summary, branch, commit, and a clickable link `https://github.com/agtheproducer/Huddle/commit/<commit>` opened with `BrowserUtil.browse(...)`.
 
 Rendering: one function `render(state: BoardState)` that rebuilds the sections. Keep the UI readable at the default tool window width (about 350–450 px).
 
@@ -95,7 +95,7 @@ Take a screenshot of each stage for the pitch (save under `docs/screenshots/`).
 
 To test live mode, set the env vars before `runIde`:
 ```bash
-export AGENT_BOARD_REPO=agtheproducer/impact_ledger
+export AGENT_BOARD_REPO=agtheproducer/Huddle
 export AGENT_BOARD_ISSUE=<issue number from docs/protocol.md>
 export GITHUB_TOKEN=<Julieta's own token>
 export AGENT_BOARD_AGENT=julieta-claude

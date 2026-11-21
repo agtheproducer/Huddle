@@ -7,14 +7,14 @@ The shared contract between `core`, `mcp` and `idea-plugin`. **Change it only af
 | What | Where |
 | --- | --- |
 | Code | Git branches, one per agent/task (`agent/core`, `agent/mcp`, `agent/idea-plugin`, …) |
-| Coordination events | Comments on one GitHub Issue in this repo: **Issue #[ISSUE_NUMBER]** |
+| Coordination events | Comments on one GitHub Issue in this repo: **Issue #1** |
 | Ordering | GitHub comment id (never the agent's clock) |
 
 ## Configuration (environment variables, never committed)
 
 | Variable | Example | Used by |
 | --- | --- | --- |
-| `AGENT_BOARD_REPO` | `agtheproducer/impact_ledger` | core |
+| `AGENT_BOARD_REPO` | `agtheproducer/Huddle` | core |
 | `AGENT_BOARD_ISSUE` | `1` | core |
 | `GITHUB_TOKEN` | a personal token with Issues read/write | core |
 | `AGENT_BOARD_AGENT` | `amit-claude` | mcp, idea-plugin |

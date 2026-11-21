@@ -2,7 +2,7 @@
 
 **Share this entire document with the other teammate and their Claude coding agent.**
 
-Status: new hackathon project idea; the linked interface is a clickable design prototype, not a working IntelliJ plugin. Replace `agtheproducer/impact_ledger`, `[ISSUE_NUMBER]`, and names once the GitHub setup is ready.
+Status: in build. The linked interface is a clickable design prototype, not a working IntelliJ plugin. GitHub setup is done: the repo is `agtheproducer/Huddle` and the coordination Issue is #1.
 
 **Interface concept:** [Agent Board in IntelliJ IDEA](https://chatgpt.com/library?file_id=libfile_fde3_f-6fedb1b8a51481918ed9d7337725533a_04ca7aa2bdb081918017ad45533b7eb2&account_id=personal). Click the four steps along the bottom: Start → Conflict → Handoff → Resolved.
 
@@ -56,7 +56,7 @@ IntelliJ Agent Board tool window ─ reads the same Issue comments
 Each agent's Git branch ─ holds its actual code and commits
 ```
 
-**GitHub is both the code host and the prototype's shared data store.** Use one coordination Issue in `agtheproducer/impact_ledger`; append structured comments to it for claims, messages, releases, and handoffs. The Kotlin code reads comments in the stable order returned by GitHub, turns them into current board state, and refreshes the UI every few seconds. This avoids deploying a separate database or service for a one-day prototype.
+**GitHub is both the code host and the prototype's shared data store.** Use one coordination Issue in `agtheproducer/Huddle`; append structured comments to it for claims, messages, releases, and handoffs. The Kotlin code reads comments in the stable order returned by GitHub, turns them into current board state, and refreshes the UI every few seconds. This avoids deploying a separate database or service for a one-day prototype.
 
 **Important distinction:** Git branches hold code. Issue comments hold coordination events. A chat summary cannot transfer actual uncommitted code: a handoff must include a pushed branch and commit ID.
 
@@ -106,7 +106,7 @@ Keep the number of tools small and return clear, short JSON. Check messages at t
 
 ## 4. Work order and gates
 
-**Phase 0 — access and shared contract (both humans, 20–30 min).** Ensure both laptops can clone and push to `agtheproducer/impact_ledger`. Create the coordination Issue and note its number. Make three branches/worktrees: `agent/core`, `agent/mcp`, `agent/idea-plugin`. Each laptop has its own GitHub access for Issue comments. Keep authentication local and out of Git. Create and push `docs/protocol.md` with the event/tool contract and module interfaces. **Gate:** all agents can read the contract; both laptops can post and read a test comment.
+**Phase 0 — access and shared contract (both humans, 20–30 min).** Ensure both laptops can clone and push to `agtheproducer/Huddle`. Create the coordination Issue and note its number. Make three branches/worktrees: `agent/core`, `agent/mcp`, `agent/idea-plugin`. Each laptop has its own GitHub access for Issue comments. Keep authentication local and out of Git. Create and push `docs/protocol.md` with the event/tool contract and module interfaces. **Gate:** all agents can read the contract; both laptops can post and read a test comment.
 
 **Phase 1 — core engine (Agent A).** Implement issue-comment fetch/post, event parsing, state reconstruction, collision rule, and focused tests. Commit a usable interface early; Agent B and C can develop against fixtures until then. **Gate:** two competing claims produce one owner and one conflict.
 
@@ -139,7 +139,7 @@ If the IntelliJ plugin setup blocks the demo, a small Kotlin desktop board readi
 
 ## 7. Copy-paste prompt for the friend's Claude cloud agent
 
-> We are building **Agent Board**, a Kotlin IntelliJ IDEA plugin and Kotlin MCP tool for three coding agents on separate accounts to coordinate work through one GitHub Issue. Read the attached `AGENT_BOARD_PROJECT_BRIEF.md` in full and inspect `agtheproducer/impact_ledger` before editing. You are **Agent C**, owner of branch `agent/idea-plugin` and the `idea-plugin` module only. Build the IntelliJ IDEA `Agent Board` tool window shown in the linked mockup: agent presence, task ownership, conflict warning, message timeline, and handoff card with a Git commit link. First make a working UI against fixture events. Then integrate with `core` via the interfaces in `docs/protocol.md` when that branch is available. Do not edit `core` or `mcp`; request contract changes through Issue `[ISSUE_NUMBER]`. Commit and push small, working increments. After each milestone, comment on the Issue with your branch, commit ID, changed files, how to run the plugin, and questions for the other agents. Do not claim that remote cloud execution can connect to a laptop's local stdio MCP server; the cloud session's job is to produce the plugin code on its branch. Prioritize an installable, repeatable judges' demo over decorative features. Do not embed GitHub credentials in source or commit any tokens.
+> We are building **Agent Board**, a Kotlin IntelliJ IDEA plugin and Kotlin MCP tool for three coding agents on separate accounts to coordinate work through one GitHub Issue. Read the attached `AGENT_BOARD_PROJECT_BRIEF.md` in full and inspect `agtheproducer/Huddle` before editing. You are **Agent C**, owner of branch `agent/idea-plugin` and the `idea-plugin` module only. Build the IntelliJ IDEA `Agent Board` tool window shown in the linked mockup: agent presence, task ownership, conflict warning, message timeline, and handoff card with a Git commit link. First make a working UI against fixture events. Then integrate with `core` via the interfaces in `docs/protocol.md` when that branch is available. Do not edit `core` or `mcp`; request contract changes through Issue `1`. Commit and push small, working increments. After each milestone, comment on the Issue with your branch, commit ID, changed files, how to run the plugin, and questions for the other agents. Do not claim that remote cloud execution can connect to a laptop's local stdio MCP server; the cloud session's job is to produce the plugin code on its branch. Prioritize an installable, repeatable judges' demo over decorative features. Do not embed GitHub credentials in source or commit any tokens.
 
 If your friend is assigned the MCP module instead, replace the role paragraph above with:
 

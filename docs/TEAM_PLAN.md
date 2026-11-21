@@ -37,12 +37,12 @@ One folder, one agent: never let two agents edit the same working directory. Use
 ## Setup on each laptop
 
 ```bash
-git clone https://github.com/agtheproducer/impact_ledger.git agent-board
+git clone https://github.com/agtheproducer/Huddle.git agent-board
 cd agent-board
 ./gradlew :core:test           # should pass
 
 # never commit these
-export AGENT_BOARD_REPO=agtheproducer/impact_ledger
+export AGENT_BOARD_REPO=agtheproducer/Huddle
 export AGENT_BOARD_ISSUE=<issue number>
 export GITHUB_TOKEN=<your own token>
 export AGENT_BOARD_AGENT=amit-claude   # or julieta-claude, codex
