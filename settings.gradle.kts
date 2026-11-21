@@ -21,3 +21,6 @@ include(":mcp")
 
 // IntelliJ IDEA "Agent Board" tool window (Julieta's agent, branch agent/idea-plugin).
 include(":idea-plugin")
+
+// Demo commands and replay safety net (Codex, branch agent/core).
+include(":cli")

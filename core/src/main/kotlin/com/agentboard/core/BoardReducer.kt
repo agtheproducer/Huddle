@@ -49,7 +49,7 @@ object BoardReducer {
         val clashes = state.activeTasks
             .filter { it.owner != e.agent && it.taskId != taskId }
             .mapNotNull { task ->
-                val overlap = e.paths.filter { it in task.paths }
+                val overlap = e.paths.filter { requested -> task.paths.any { PathOverlap.overlaps(requested, it) } }
                 if (overlap.isEmpty()) null else task to overlap
             }
         if (clashes.isNotEmpty()) {
@@ -132,7 +132,9 @@ object BoardReducer {
     /** Conflicts about a task (or its paths) are resolved once that task changes hands or ends. */
     private fun resolveConflicts(conflicts: List<Conflict>, task: TaskState): List<Conflict> =
         conflicts.map { c ->
-            val related = c.taskId == task.taskId || c.overlappingPaths.any { it in task.paths }
+            val related = c.taskId == task.taskId || c.overlappingPaths.any { overlapping ->
+                task.paths.any { PathOverlap.overlaps(overlapping, it) }
+            }
             if (related) c.copy(resolved = true) else c
         }
 

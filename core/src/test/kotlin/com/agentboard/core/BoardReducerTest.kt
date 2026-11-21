@@ -37,6 +37,50 @@ class BoardReducerTest {
     }
 
     @Test
+    fun `claimed folder conflicts with a file inside it`() {
+        val store = InMemoryBoardStore()
+        client(store, "agent-a").claimTask("plugin", listOf("idea-plugin/src/"), "agent/a")
+        val b = client(store, "agent-b").claimTask(
+            "dashboard", listOf("idea-plugin/src/main/kotlin/Dashboard.kt"), "agent/b",
+        )
+
+        assertFalse(b.owned)
+        assertEquals("agent-a", b.conflict?.currentOwner)
+        assertEquals("plugin", client(store, "agent-b").board().ownerOfPath("idea-plugin/src/main/kotlin/Dashboard.kt")?.taskId)
+    }
+
+    @Test
+    fun `file claim conflicts with a later containing folder claim`() {
+        val store = InMemoryBoardStore()
+        client(store, "agent-a").claimTask("dashboard", listOf("idea-plugin/src/main/kotlin/Dashboard.kt"), "agent/a")
+        val b = client(store, "agent-b").claimTask("plugin", listOf("idea-plugin/"), "agent/b")
+
+        assertFalse(b.owned)
+        assertEquals(listOf("idea-plugin/"), b.conflict?.overlappingPaths)
+        assertEquals("dashboard", client(store, "agent-b").board().ownerOfPath("idea-plugin/")?.taskId)
+    }
+
+    @Test
+    fun `folder prefix does not claim sibling names`() {
+        val store = InMemoryBoardStore()
+        client(store, "agent-a").claimTask("source", listOf("idea-plugin/src/"), "agent/a")
+        val b = client(store, "agent-b").claimTask("other", listOf("idea-plugin/src2/File.kt"), "agent/b")
+
+        assertTrue(b.owned)
+        assertNull(client(store, "agent-b").board().ownerOfPath("idea-plugin/src3/File.kt"))
+    }
+
+    @Test
+    fun `paths are normalized before comparing`() {
+        val store = InMemoryBoardStore()
+        client(store, "agent-a").claimTask("source", listOf("./idea-plugin\\src/"), "agent/a")
+        val b = client(store, "agent-b").claimTask("dashboard", listOf("idea-plugin/src/main/Dashboard.kt"), "agent/b")
+
+        assertFalse(b.owned)
+        assertEquals("agent-a", b.conflict?.currentOwner)
+    }
+
+    @Test
     fun `handoff needs a commit and moves ownership`() {
         val store = InMemoryBoardStore()
         val a = client(store, "agent-a")
