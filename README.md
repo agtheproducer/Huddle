@@ -1,84 +1,50 @@
-# Impact_Ledger
+# Agent Board
 
-**See the estimated impact of every franc you donate, backed by verified data and KPIs.**
+**Agent Board lets different developers' AI coding agents see each other's work, resolve overlapping tasks, and hand over real code, directly from IntelliJ IDEA.**
 
-Built at the IMC Trading × JetBrains hackathon (November 2026).
+Built at the hackathon for the JetBrains challenge.
 
 ## The problem
 
-Many people give little or nothing because they never find out what their donation changed. Impact reports arrive once a year, written by the charity itself, and rarely say what *your* gift did.
+Two developers work on the same repo, each with their own coding agent. The agents can't see each other: they plan in private chats, edit the same files, and Git only catches the clash at merge time. Passing context between people is manual.
 
-## Our solution
+## The solution
 
-Impact Ledger shows donors the estimated impact of their giving with clear KPIs and real numbers, so they trust their donations and give more.
+A shared board the agents talk through before they code:
 
-- **For companies:** one dashboard showing the impact of all their charitable giving, across every NGO they fund.
-- **For employees:** an app to follow what their own donations are doing.
-- **For NGOs:** an easy way to report results, with an AI agent collecting updates to keep their effort low.
+1. **Claim:** an agent claims a task and the files it will change.
+2. **Conflict:** if another agent already owns them, the board shows a conflict.
+3. **Talk and hand off:** the agents agree who continues; a handoff carries a summary plus a real pushed branch and commit.
+4. **See it all:** both developers watch the board live in an IntelliJ tool window.
 
-### Example: an education NGO
+We don't claim to have invented parallel agents or the only coordination tool. Our focus is the **cross-person, cross-agent conversation, task ownership and code handoff**, inside JetBrains IDEs.
 
-| KPI | Example |
-| --- | --- |
-| Children who learned to read | reading at grade level after one year |
-| Books published | in local languages |
-| Teachers trained | per programme |
-| Students who reached high school | from supported schools |
-
-### Honest numbers
-
-Every number is an **estimate**, labelled by how much you can trust it:
-
-| Trust level | Source |
-| --- | --- |
-| Measured | Data collected directly (devices, partner measurements) |
-| Reported | Published reports and financial statements, read by an AI agent |
-| Self-reported | Updates submitted by NGO staff |
-
-A donor's share of a project's results is shown as an estimate, never as an exact one-to-one link.
-
-## First customer: IMC
-
-IMC already gives at scale through its foundations and its annual Trading for Charity Day. Impact Ledger would let IMC show every employee what the firm's giving, and their own, achieved.
-
-## Tech
-
-Built with **Kotlin Multiplatform** in **IntelliJ IDEA**: one shared Kotlin core powering two apps.
-
-| Part | Technology |
-| --- | --- |
-| Donor app | Android, Compose Multiplatform |
-| Company and NGO app | Desktop (JVM), Compose Multiplatform |
-| Shared logic | Kotlin `commonMain`: projects, donations, KPIs, trust levels, impact estimates |
-| Networking | Ktor client, Ktor server |
-| Data format | kotlinx.serialization (JSON) |
-
-## Project structure
+## How it works
 
 ```
-Impact_Ledger/
-└── composeApp/
-    └── src/
-        ├── commonMain/   # shared Kotlin: models, impact estimates, demo data, UI
-        ├── androidMain/  # Android app entry point (mobile)
-        └── wasmJsMain/   # web app entry point (Kotlin/Wasm in the browser)
+Laptop A: IntelliJ + agent ─┐
+                            ├─ local Kotlin MCP server ─ GitHub Issue comments (shared event log)
+Laptop B: IntelliJ + agent ─┘
+IntelliJ "Agent Board" tool window ─ reads the same Issue
+Git branches ─ hold the actual code
 ```
 
-Versions: Kotlin 2.1.21, Compose Multiplatform 1.8.2, Android Gradle Plugin 8.7.3, Gradle 8.14.3.
+| Module | What | Status |
+| --- | --- | --- |
+| [`core`](core) | Event types, GitHub Issue store, board state, claim/conflict rules | Built, tested |
+| [`mcp`](mcp) | Local stdio MCP server with the board tools | To build (Agent B) |
+| [`idea-plugin`](idea-plugin) | IntelliJ IDEA tool window | To build (Agent C) |
 
-## Running the project
+- Contract: [`docs/protocol.md`](docs/protocol.md)
+- Project brief: [`docs/PROJECT_BRIEF.md`](docs/PROJECT_BRIEF.md)
+- Team plan: [`docs/TEAM_PLAN.md`](docs/TEAM_PLAN.md)
 
-Open the folder in IntelliJ IDEA (with the Android plugin) and let Gradle sync. You need the Android SDK (API 35) for the mobile app.
+## Run
 
-| App | Command |
-| --- | --- |
-| Web app | `./gradlew :composeApp:wasmJsBrowserDevelopmentRun` (opens in your browser) |
-| Android app | Run the `composeApp` configuration on an emulator or phone, or `./gradlew :composeApp:assembleDebug` |
+```bash
+./gradlew :core:test
+```
 
-## Data
+Requires JDK 21. Configuration is through environment variables (see `docs/protocol.md`); never commit tokens.
 
-All NGO names and numbers in the demo are **simulated**.
-
-## Team
-
-[TEAM NAMES AND ROLES]
+The earlier Impact Ledger prototype is kept on branch `archive/impact-ledger`.
