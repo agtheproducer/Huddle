@@ -53,19 +53,27 @@ Built with **Kotlin Multiplatform** in **IntelliJ IDEA**: one shared Kotlin core
 | Networking | Ktor client, Ktor server |
 | Data format | kotlinx.serialization (JSON) |
 
-## Project structure (planned)
+## Project structure
 
 ```
 Impact_Ledger/
-├── shared/          # commonMain: models, impact maths, API client
-├── androidApp/      # donor app
-├── desktopApp/      # company and NGO dashboard
-└── server/          # Ktor backend (optional for the demo)
+└── composeApp/
+    └── src/
+        ├── commonMain/   # shared Kotlin: models, impact estimates, demo data, UI
+        ├── androidMain/  # Android app entry point (mobile)
+        └── wasmJsMain/   # web app entry point (Kotlin/Wasm in the browser)
 ```
+
+Versions: Kotlin 2.1.21, Compose Multiplatform 1.8.2, Android Gradle Plugin 8.7.3, Gradle 8.14.3.
 
 ## Running the project
 
-Instructions will be added once the Kotlin Multiplatform project is set up.
+Open the folder in IntelliJ IDEA (with the Android plugin) and let Gradle sync. You need the Android SDK (API 35) for the mobile app.
+
+| App | Command |
+| --- | --- |
+| Web app | `./gradlew :composeApp:wasmJsBrowserDevelopmentRun` (opens in your browser) |
+| Android app | Run the `composeApp` configuration on an emulator or phone, or `./gradlew :composeApp:assembleDebug` |
 
 ## Data
 
