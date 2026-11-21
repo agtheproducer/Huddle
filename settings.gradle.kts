@@ -24,3 +24,6 @@ include(":idea-plugin")
 
 // Demo commands and replay safety net (Codex, branch agent/core).
 include(":cli")
+
+// Read-only web view of the board, for demos and projectors (Amit's agent, branch agent/web).
+include(":web")
