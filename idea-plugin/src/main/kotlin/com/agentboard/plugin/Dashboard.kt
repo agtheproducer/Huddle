@@ -5,6 +5,7 @@ import com.agentboard.core.DemoFixtures
 import com.agentboard.core.EventType
 import com.agentboard.core.PostedEvent
 import com.agentboard.core.TaskState
+import com.intellij.icons.AllIcons
 import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
@@ -33,6 +34,7 @@ import javax.swing.JButton
 import javax.swing.JComponent
 import javax.swing.Scrollable
 import javax.swing.SwingConstants
+import javax.swing.text.DefaultCaret
 
 /**
  * The Agent Board panel: stage picker, conflict banner, agents, tasks and the timeline.
@@ -51,9 +53,14 @@ class Dashboard(
         (if (liveAvailable()) listOf("Live") else emptyList())
 
     private val stageBox = ComboBox(sourceNames.toTypedArray())
-    private val refreshButton = JButton("Refresh")
+    private val refreshButton = JButton(AllIcons.Actions.Refresh).apply {
+        toolTipText = "Refresh"
+        putClientProperty("JButton.buttonType", "square")
+    }
     private val statusLabel = plainLabel("").apply { foreground = JBColor.GRAY }
     private val content = ScrollablePanel()
+    private val scrollPane = JBScrollPane(content).apply { border = JBUI.Borders.empty() }
+    private var scrollToTopOnRender = true
 
     private var currentSource: BoardSource? = null
     @Volatile private var disposed = false
@@ -61,18 +68,27 @@ class Dashboard(
     private val repo: String = System.getenv("AGENT_BOARD_REPO")?.takeIf { it.isNotBlank() } ?: "agtheproducer/impact_ledger"
 
     init {
-        val toolbar = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(6), JBUI.scale(4))).apply {
+        val controls = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, JBUI.scale(6), JBUI.scale(4))).apply {
             add(stageBox)
             add(refreshButton)
-            add(statusLabel)
+        }
+        // Status sits on its own line so the toolbar fits a narrow tool window.
+        val toolbar = JBPanel<JBPanel<*>>(BorderLayout()).apply {
+            add(controls, BorderLayout.NORTH)
+            add(statusLabel.apply { border = JBUI.Borders.empty(0, 8, 2, 8) }, BorderLayout.SOUTH)
         }
         add(toolbar, BorderLayout.NORTH)
-        add(JBScrollPane(content).apply { border = JBUI.Borders.empty() }, BorderLayout.CENTER)
+        add(scrollPane, BorderLayout.CENTER)
 
         stageBox.addActionListener { selectSource(stageBox.selectedIndex) }
         refreshButton.addActionListener { reload() }
         Disposer.register(parentDisposable) { disposed = true }
-        selectSource(0)
+        // Optional AGENT_BOARD_STAGE (e.g. "conflict" or "live") picks the stage shown at startup.
+        val initial = System.getenv("AGENT_BOARD_STAGE")
+            ?.let { wanted -> sourceNames.indexOfFirst { it.equals(wanted, ignoreCase = true) } }
+            ?.takeIf { it >= 0 } ?: 0
+        stageBox.selectedIndex = initial  // fires the listener, which loads the board
+        if (initial == 0) selectSource(0)
     }
 
     private fun selectSource(index: Int) {
@@ -80,6 +96,7 @@ class Dashboard(
             showError("Could not open board: ${e.message}")
             null
         }
+        scrollToTopOnRender = true
         reload()
     }
 
@@ -113,6 +130,9 @@ class Dashboard(
             content.add(banner("Conflict: ${c.claimant} and ${c.currentOwner} both claimed $files", c.reason))
         }
 
+        // The latest handoff is the moment the demo is about, so keep it above the fold.
+        state.timeline.lastOrNull { it.event.type == EventType.HANDOFF }?.let { content.add(handoffCard(it, latest = true)) }
+
         content.add(sectionTitle("Agents"))
         if (state.agents.isEmpty()) content.add(muted("No agents yet."))
         state.agents.values.sortedBy { it.agent }.forEach { a ->
@@ -134,6 +154,11 @@ class Dashboard(
 
         content.revalidate()
         content.repaint()
+        if (scrollToTopOnRender) {
+            scrollToTopOnRender = false
+            // After layout, so the new height is known.
+            ApplicationManager.getApplication().invokeLater { scrollPane.verticalScrollBar.value = 0 }
+        }
     }
 
     private fun taskCard(t: TaskState) = card(highlight = t.owner == currentAgent) {
@@ -158,10 +183,11 @@ class Dashboard(
         }.fillWidth()
     }
 
-    private fun handoffCard(p: PostedEvent): JComponent {
+    private fun handoffCard(p: PostedEvent, latest: Boolean = false): JComponent {
         val e = p.event
+        val title = (if (latest) "Latest handoff: " else "Handoff: ") + "${e.agent} → ${e.toAgent ?: "?"}"
         return card(background = HANDOFF_BG) {
-            add(bold("Handoff: ${e.agent} → ${e.toAgent ?: "?"}"))
+            add(text(title).apply { font = JBFont.label().asBold() })
             add(muted("${formatTime(p.createdAt)} · task ${e.taskId ?: "?"}"))
             e.summary?.let { add(text(it)) }
             add(text("Branch: ${e.branch ?: "–"}"))
@@ -178,7 +204,7 @@ class Dashboard(
     // ---- small building blocks ----
 
     private fun banner(title: String, reason: String) = card(background = CONFLICT_BG, borderColor = CONFLICT_BORDER) {
-        add(bold(title))
+        add(text(title).apply { font = JBFont.label().asBold() })
         add(text(reason))
     }
 
@@ -211,8 +237,12 @@ class Dashboard(
     private fun bold(s: String) = plainLabel(s).apply { font = JBFont.label().asBold() }
 
     /** Wrapping, non-editable plain text: board content comes from Issue comments, so never render it as HTML. */
-    private fun text(s: String, color: Color? = null) = JBTextArea(s).apply {
+    private fun text(s: String, color: Color? = null) = JBTextArea().apply {
+        // Set before the text: otherwise each text area scrolls itself into view and the board opens mid-way down.
+        (caret as? DefaultCaret)?.updatePolicy = DefaultCaret.NEVER_UPDATE
+        text = s
         isEditable = false
+        isFocusable = false
         lineWrap = true
         wrapStyleWord = true
         isOpaque = false
