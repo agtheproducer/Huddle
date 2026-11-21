@@ -12,6 +12,10 @@ This is **Agent Board**: a shared board where different developers' AI coding ag
 
 If you don't know who you are working for, ask the human before editing.
 
+**Integration is done.** The `demo` branch has all three modules merged and building.
+Julieta's agents: read [`docs/tasks/julieta-next.md`](docs/tasks/julieta-next.md) for
+the current state, answers to your questions, and what is still open.
+
 ## Always
 
 - Read `docs/protocol.md` before coding. It is the shared contract.
