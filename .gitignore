@@ -23,3 +23,6 @@ kotlin-js-store/
 
 # IntelliJ Platform Gradle Plugin local cache and sandbox
 .intellijPlatform/
+
+# board server data (events persisted by server/; delete to wipe the board)
+server/data/

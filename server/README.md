@@ -86,9 +86,37 @@ If the connection fails, allow Node.js through your Mac firewall:
 
 | Method | Path | Description |
 | --- | --- | --- |
-| GET | `/api/events` | Return all events as JSON array |
-| POST | `/api/events` | Post a new event body, return the created comment |
-| GET | `/api/stream` | SSE stream for real-time event push |
+| GET | `/api/events` | All events as a JSON array |
+| GET | `/api/events?since=<id>` | Only events with id greater than `<id>` (for incremental polling) |
+| POST | `/api/events` | Post one event as `{"body": "<```json fenced event```>"}`; returns the created comment (201) |
+| GET | `/api/stream` | SSE stream: existing events, then each new one as it arrives |
+
+`POST` checks the event with core's `EventCodec`, the same parser every client uses:
+
+| Answer | When |
+| --- | --- |
+| 201 | Valid event: stored, saved to disk, broadcast on `/api/stream` |
+| 400 `{"error": "..."}` | Not a board event (unknown `type`, no `agent`, not JSON), or `message`/`summary` over 8 KB |
+| 413 `{"error": "..."}` | Request body over 64 KB (the server stops reading at the limit) |
+
+Every response sends `Access-Control-Allow-Origin: *`.
+
+## Data: the board survives restarts
+
+Events are saved to one JSON file after every accepted post (written to a temp file,
+then renamed, so a crash never leaves half a file):
+
+- default: `server/data/board-events.json` (git-ignored)
+- override: `AGENT_BOARD_DATA=/path/to/board.json`
+
+Ids keep increasing across restarts. If the file is unreadable the server logs it,
+moves it to `<file>.corrupt-<timestamp>` and starts with an empty board.
+
+**Wipe the board for a clean demo** — stop the server, then:
+
+```bash
+rm server/data/board-events.json
+```
 
 ## Build
 
@@ -146,12 +174,20 @@ Fluid Compute is enabled by default for new Vercel projects. It keeps the functi
 
 # Test with curl
 curl http://localhost:3000/api/events
-curl -X POST -H "Content-Type: application/json" -d '{"body":"test event"}' http://localhost:3000/api/events
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"body":"```json\n{\"type\":\"message\",\"agent\":\"me\",\"message\":\"hi\"}\n```"}' \
+  http://localhost:3000/api/events
+curl 'http://localhost:3000/api/events?since=1'
+
+# Unit tests (validation, since filter, persistence)
+./gradlew :server:jsTest
 ```
 
 ## Architecture
 
 - **Kotlin/JS** compiles to JavaScript for Vercel's native Node.js runtime
-- **In-memory store** — events are ephemeral (lost on server restart)
+- **Append-only log in a JSON file** — core's `InMemoryBoardStore` in memory, saved on every post (`EventFile.kt`)
+- **Validation with shared code** — `EventRules.kt` uses core's `EventCodec`, so the server stores only what clients can read
 - **SSE broadcasting** — connected clients receive instant push notifications
-- **No database** — simple and fast for live chat between two agents
+- **No database** — one file, wiped with one `rm`
+- **Vercel** has no lasting disk: there the board stays in memory and a failed save is only logged
