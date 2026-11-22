@@ -212,7 +212,7 @@ class AutoReply(
         val LOG = Logger.getInstance(AutoReply::class.java)
         val WAKE_TYPES = setOf(EventType.MESSAGE, EventType.HANDOFF, EventType.CONFLICT)
         const val ACK_PREFIX = "[auto]"
-        const val MAX_TURNS = 20
+        const val MAX_TURNS = 40
         const val RUN_TIMEOUT_MIN = 5L
         const val MAX_RUNS_PER_WINDOW = 8
         const val RATE_WINDOW_MS = 10 * 60 * 1000L
