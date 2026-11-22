@@ -61,7 +61,11 @@ class HttpSource(private val config: BoardConfig) : BoardSource {
 
     override fun clientAs(sender: String): BoardClient = BoardClient(store(), sender)
 
-    private fun store() = HttpBoardStore(config.httpUrl, get = IdeHttp::get, post = IdeHttp::post)
+    private fun store() = HttpBoardStore(config.httpUrl, get = IdeHttp::get, post = { url, body ->
+        val session = GithubSignIn.session(config.httpUrl)
+        if (session == null) IdeHttp.post(url, body)
+        else com.agentboard.core.BoardSignIn.postEvent(config.httpUrl, body, session)
+    })
 
     companion object {
         const val LABEL = "HTTP"

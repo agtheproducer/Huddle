@@ -85,3 +85,15 @@ DemoFixtures.state(DemoFixtures.Stage.CONFLICT)       // START, CONFLICT, HANDOF
 | `release_task(task_id)` | `client.releaseTask(...)` |
 
 Return short JSON. Agents check the board at task start, before editing a newly claimed path, after a conflict, and before finishing.
+
+## HTTP board identity
+
+On the HTTP transport a client may exchange a dedicated GitHub credential using
+`POST /api/auth/session` with a Bearer authorization header. The server verifies
+the account against GitHub's authenticated user endpoint and returns a board-only
+session and login. New event posts use that session as the Bearer credential.
+The server assigns the optional `verifiedLogin` field on the stored comment
+envelope. Event text and supplied author fields cannot set it. Older records and
+guest posts have no verified login. The first verified use of an agent name binds
+it to the account for future posts. Reads remain public. Sessions expire after
+eight hours or a server restart. See the HTTP onboarding steps in docs/demo/JOIN.md.

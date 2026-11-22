@@ -41,6 +41,7 @@ data class RawComment(
     val createdAt: String,
     val author: String,
     val body: String,
+    val verifiedLogin: String? = null,
 )
 
 /**
@@ -52,4 +53,5 @@ data class PostedEvent(
     val createdAt: String,
     val author: String,
     val event: BoardEvent,
+    val verifiedLogin: String? = null,
 )

@@ -206,6 +206,7 @@ private class Hub(
                             // Who really posted it. The agent field is self-declared, so the view
                             // shows the GitHub account beside it.
                             put("github_author", p.author)
+                            p.verifiedLogin?.let { put("verified_login", it) }
                             put("type", p.event.type)
                             put("task_id", p.event.taskId ?: "")
                             put("to_agent", p.event.toAgent ?: "")

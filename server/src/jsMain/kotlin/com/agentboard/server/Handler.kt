@@ -30,6 +30,15 @@ private fun route(req: dynamic, res: dynamic) {
     val path = EventRules.path(url)
 
     when {
+        method == "GET" && path == "/api/auth/config" -> send(res, 200, authConfig())
+        method == "POST" && path == "/api/auth/session" -> exchangeGithubToken(req, res)
+        method == "POST" && path == "/api/auth/browser" -> exchangeBrowserCode(req, res)
+        method == "GET" && path == "/api/auth/me" -> {
+            res.setHeader("Cache-Control", "no-store")
+            val login = Sessions.lookup(req.headers["authorization"] as? String)
+            if (login == null) sendError(res, 401, "Sign in again")
+            else send(res, 200, JsonObject(mapOf("login" to JsonPrimitive(login))).toString())
+        }
         method == "OPTIONS" -> send(res, 204, "")
         method == "GET" && path == "/api/events" -> {
             val since = EventRules.since(url)
@@ -45,7 +54,7 @@ private fun route(req: dynamic, res: dynamic) {
 private val corsHeaders = mapOf(
     "Access-Control-Allow-Origin" to "*",
     "Access-Control-Allow-Methods" to "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers" to "Content-Type",
+    "Access-Control-Allow-Headers" to "Content-Type, Authorization",
 )
 
 /** Node wants a plain JS object for headers, not a Kotlin Map. */
@@ -55,12 +64,12 @@ private fun headers(values: Map<String, String>): dynamic {
     return obj
 }
 
-private fun send(res: dynamic, status: Int, body: String, type: String = "application/json") {
+internal fun send(res: dynamic, status: Int, body: String, type: String = "application/json") {
     res.writeHead(status, headers(corsHeaders + ("Content-Type" to type)))
     res.end(body)
 }
 
-private fun sendError(res: dynamic, status: Int, message: String) =
+internal fun sendError(res: dynamic, status: Int, message: String) =
     send(res, status, JsonObject(mapOf("error" to JsonPrimitive(message))).toString())
 
 /**
@@ -68,6 +77,12 @@ private fun sendError(res: dynamic, status: Int, message: String) =
  * holds a valid event, then store it.
  */
 fun handlePostEvent(req: dynamic, res: dynamic) {
+    val header = req.headers["authorization"] as? String
+    val login = Sessions.lookup(header)
+    if (login == null && (header != null || requireLogin())) {
+        sendError(res, 401, "Sign in to BOB with GitHub")
+        return
+    }
     val tooLarge = "request body is over ${EventRules.MAX_REQUEST_BYTES / 1024} KB"
     val declared = (req.headers["content-length"] as? String)?.toLongOrNull()
     if (declared != null && declared > EventRules.MAX_REQUEST_BYTES) {
@@ -96,7 +111,11 @@ fun handlePostEvent(req: dynamic, res: dynamic) {
             val body = EventRules.commentBody(raw)
             val reason = EventRules.rejection(body)
             if (reason != null) sendError(res, 400, reason)
-            else send(res, 201, Server.post(body))
+            else {
+                val agent = com.agentboard.core.EventCodec.parse(com.agentboard.core.RawComment(0, "", "", body))!!.event.agent
+                if (!Server.mayPost(agent, login)) sendError(res, 403, "This agent name belongs to another GitHub account")
+                else send(res, 201, Server.post(body, login))
+            }
         }
     })
 }

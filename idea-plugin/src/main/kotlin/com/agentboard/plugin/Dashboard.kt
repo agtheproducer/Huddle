@@ -76,6 +76,47 @@ class Dashboard(
         toolTipText = "BOB settings"
         putClientProperty("JButton.buttonType", "square")
     }
+    private var accountBoard = ""
+    private var accountCheckAt = 0L
+    private var accountRevision = 0L
+    private val accountButton = JButton("GitHub sign-in").apply {
+        addActionListener {
+            val board = config.httpUrl
+            GithubSignIn.start(project, board) { login ->
+                if (board == config.httpUrl) {
+                    accountRevision++
+                    showAccount(login)
+                }
+            }
+        }
+    }
+
+    private fun showAccount(login: String?) {
+        accountButton.text = login?.let { "✓ @$it" } ?: "GitHub sign-in"
+        accountButton.toolTipText = login?.let { "Signed in as @$it. Click to switch accounts." } ?: "Continue with GitHub"
+    }
+
+    private fun refreshAccount() {
+        val board = config.httpUrl
+        accountButton.isVisible = board.isNotBlank()
+        if (board != accountBoard) {
+            accountBoard = board
+            accountRevision++
+            accountCheckAt = 0
+            showAccount(null)
+        }
+        val now = System.currentTimeMillis()
+        if (board.isBlank() || now < accountCheckAt) return
+        accountCheckAt = now + 30_000
+        val revision = ++accountRevision
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val login = runCatching { GithubSignIn.currentLogin(board) }.getOrNull()
+            ApplicationManager.getApplication().invokeLater {
+                if (!project.isDisposed && revision == accountRevision) showAccount(login)
+            }
+        }
+    }
+
     private val statusLabel = plainLabel("").apply { foreground = JBColor.GRAY }
 
     /** Off by default: when on, a message for this laptop's agent starts Claude Code to answer it. */
@@ -128,6 +169,7 @@ class Dashboard(
             add(stageBox)
             add(refreshButton)
             add(settingsButton)
+            add(accountButton)
             add(autoReplyBox)
         }
         // Status sits on its own line so the toolbar fits a narrow tool window.
@@ -161,6 +203,7 @@ class Dashboard(
     /** Draws one snapshot from the service. */
     private fun show(s: BoardService.Snapshot) {
         snapshot = s
+        refreshAccount()
         syncStages(s)
         if (s.selectedIndex != shownSource) {
             shownSource = s.selectedIndex
@@ -338,7 +381,7 @@ class Dashboard(
 
     /** Same sender, same recipient, within five minutes: one group, so the name and avatar show once. */
     private fun continues(prev: PostedEvent?, p: PostedEvent): Boolean {
-        if (prev == null || prev.isAuto()) return false
+        if (prev == null || prev.isAuto() || prev.verifiedLogin != p.verifiedLogin) return false
         val a = prev.event
         val b = p.event
         if (a.type != EventType.MESSAGE || b.type != EventType.MESSAGE || a.agent != b.agent || a.toAgent != b.toAgent) return false
@@ -370,6 +413,7 @@ class Dashboard(
                 head += gap(4)
                 head += plainLabel("→ $toText").apply { font = JBFont.small(); foreground = meta }
             }
+            p.verifiedLogin?.let { head += plainLabel("  ✓ @$it").muted().small() }
             card.add(row(*head.toTypedArray()))
         }
         val body = text((e.message ?: e.summary ?: "").trim(), if (mine) BoardTheme.MINE_TEXT else null).apply {
@@ -692,7 +736,7 @@ class Dashboard(
 
     /** " · via login" when the GitHub account is known and differs from the agent name, else "". */
     private fun via(p: PostedEvent): String =
-        p.author.takeIf { it.isNotBlank() && it != p.event.agent && it != "local" }?.let { " · via $it" } ?: ""
+        p.verifiedLogin?.let { " · ✓ @$it" } ?: p.author.takeIf { it.isNotBlank() && it != p.event.agent && it != "local" }?.let { " · via $it" } ?: ""
 
     private fun PostedEvent.isAuto(): Boolean = event.message?.trimStart()?.startsWith("[auto]") == true
 

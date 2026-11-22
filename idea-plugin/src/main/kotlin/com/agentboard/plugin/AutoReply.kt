@@ -141,6 +141,12 @@ class AutoReply(
                 "--allowedTools \"\$AB_TOOLS\" --disallowedTools \"\$AB_DENY\" --max-turns $MAX_TURNS --output-format text",
         ).directory(workDir).redirectErrorStream(true)
         pb.environment().apply {
+            remove("BOB_SESSION")
+            remove("BOB_SESSION_URL")
+            if (config.httpAvailable) GithubSignIn.session(config.httpUrl)?.let {
+                put("BOB_SESSION", it)
+                put("BOB_SESSION_URL", config.httpUrl)
+            }
             put("AB_PROMPT", prompt(messages, config))
             put("AB_MCP", mcpConfig.absolutePath)
             put("AB_TOOLS", if (mayEdit()) EDIT_TOOLS else ANSWER_TOOLS)

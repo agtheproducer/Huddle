@@ -39,8 +39,8 @@ tasks.test {
 intellijPlatform {
     pluginConfiguration {
         id = "com.agentboard.plugin"
-        name = "BOB – Board of Bots"
-        version = "0.1.0"
+        name = "BOB - Board of Bots"
+        version = "0.2.0"
         ideaVersion {
             // Built against 2026.2 and verified on 2026.2 and 2026.3 (below): claim only what was checked.
             sinceBuild = "262"

@@ -21,6 +21,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.io.asSink
 import kotlinx.io.asSource
 import kotlinx.io.buffered
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -36,7 +39,11 @@ fun createStore(env: Map<String, String> = System.getenv()): BoardStore {
     // HTTP server takes priority if configured
     val httpUrl = env["AGENT_BOARD_HTTP_URL"]
     if (!httpUrl.isNullOrBlank()) {
-        return HttpBoardStore(httpUrl)
+        val session = env["BOB_SESSION"] ?: return HttpBoardStore(httpUrl)
+        require(env["BOB_SESSION_URL"]?.trimEnd('/') == httpUrl.trimEnd('/')) { "BOB session belongs to another board." }
+        return HttpBoardStore(httpUrl, post = { _, body ->
+            com.agentboard.core.BoardSignIn.postEvent(httpUrl, body, session)
+        })
     }
     // Fall back to GitHub if configured
     val live = LIVE_VARS.all { !env[it].isNullOrBlank() }
@@ -62,7 +69,18 @@ fun createTools(env: Map<String, String> = System.getenv()): BoardTools {
 /** stdout carries the MCP protocol, so all logging goes to stderr. */
 private fun log(message: String) = System.err.println("[agent-board] $message")
 
-fun main(): Unit = runBlocking {
+fun main(args: Array<String>): Unit = runBlocking {
+    if (args.contentEquals(arrayOf("--github-login"))) {
+        require(System.console() == null) { "Capture the session with BOB_SESSION=\$(mcp --github-login)." }
+        val board = com.agentboard.core.BoardSignIn.endpoint(System.getenv("AGENT_BOARD_HTTP_URL") ?: error("Set AGENT_BOARD_HTTP_URL"))
+        val config = kotlinx.serialization.json.Json.parseToJsonElement(com.agentboard.core.BoardSignIn.request("$board/api/auth/config")).jsonObject
+        check(config["browser"]?.jsonPrimitive?.booleanOrNull == true) { "This board needs browser OAuth enabled." }
+        val reply = com.agentboard.core.BrowserLogin.signIn(board, config.getValue("client_id").jsonPrimitive.content,
+            { java.awt.Desktop.getDesktop().browse(java.net.URI(it)) }, {})
+        log("Signed in as @" + reply.getValue("login").jsonPrimitive.content)
+        print(reply.getValue("session").jsonPrimitive.content)
+        return@runBlocking
+    }
     val tools = createTools()
     log("starting as ${tools.agent}")
 

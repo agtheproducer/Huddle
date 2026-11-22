@@ -76,6 +76,19 @@ class BoardTest {
         assertEquals(3L, Board(EventFile(path)).events().last().id)
     }
 
+    @Test fun verifiedNamesSurviveRestartAndGuestsCannotReuseThem() {
+        val path = tempPath()
+        val board = Board(EventFile(path))
+        assertTrue(board.mayPost("a", "first"))
+        board.post(event, "first")
+        val restarted = Board(EventFile(path))
+        assertEquals("first", restarted.events().single().verifiedLogin)
+        assertTrue(restarted.mayPost("A", "First"))
+        assertEquals(false, restarted.mayPost("a", "second"))
+        assertEquals(false, restarted.mayPost("a", null))
+        assertTrue(restarted.mayPost("different", "second"))
+    }
+
     @Test fun corruptFileIsMovedAsideAndBoardStartsEmpty() {
         val path = tempPath()
         Board(EventFile(path)).post(event) // creates the folder

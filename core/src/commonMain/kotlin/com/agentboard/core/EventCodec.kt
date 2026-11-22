@@ -27,7 +27,7 @@ object EventCodec {
         val event = runCatching { json.decodeFromString(BoardEvent.serializer(), candidate) }.getOrNull()
             ?: return null
         if (event.type !in EventType.ALL || event.agent.isBlank()) return null
-        return PostedEvent(comment.id, comment.createdAt, comment.author, event)
+        return PostedEvent(comment.id, comment.createdAt, comment.author, event, comment.verifiedLogin)
     }
 
     /** Parses all comments in GitHub's order (by comment id), skipping anything malformed. */

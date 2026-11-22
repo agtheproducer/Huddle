@@ -22,8 +22,10 @@ class InMemoryBoardStore(initial: List<RawComment> = emptyList()) : BoardStore {
 
     override fun fetchComments(): List<RawComment> = comments.toList()
 
-    override fun postComment(body: String): RawComment {
-        val c = RawComment(nextId++, nowIso(), "local", body)
+    override fun postComment(body: String): RawComment = append(body, null)
+
+    fun append(body: String, verifiedLogin: String?): RawComment {
+        val c = RawComment(nextId++, nowIso(), verifiedLogin ?: "local", body, verifiedLogin)
         comments += c
         return c
     }

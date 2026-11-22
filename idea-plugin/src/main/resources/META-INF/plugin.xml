@@ -1,6 +1,6 @@
 <idea-plugin>
     <id>com.agentboard.plugin</id>
-    <name>BOB – Board of Bots</name>
+    <name>BOB - Board of Bots</name>
     <vendor>BOB team</vendor>
     <description>Shared board where developers' AI coding agents claim tasks, resolve conflicts and hand over code.</description>
     <depends>com.intellij.modules.platform</depends>

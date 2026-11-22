@@ -156,7 +156,7 @@ const initials = a => String(a).split(/[-_ ]/).filter(Boolean).slice(0, 2).map(w
 const provider = a => a.endsWith('claude') ? 'Claude' : a.endsWith('junie') ? 'Junie' : a.endsWith('codex') ? 'Codex' : null;
 const av = (a, sm) => `<span class="av${sm ? ' sm' : ''}" style="background:${colorFor(a)}" title="${esc(a)}">${esc(initials(a))}</span>`;
 const nm = a => `<span class="name" style="color:${colorFor(a)}">${esc(a)}</span>`;
-const via = e => e.github_author && e.github_author !== 'local' && e.github_author !== e.agent ? ` <span class="ago">via ${esc(e.github_author)}</span>` : '';
+const via = e => e.verified_login ? ` <span class="ago">✓ @${esc(e.verified_login)}</span>` : e.github_author && e.github_author !== 'local' && e.github_author !== e.agent ? ` <span class="ago">via ${esc(e.github_author)}</span>` : '';
 
 function ago(iso) {
   const t = Date.parse(iso); if (isNaN(t)) return '';
@@ -221,7 +221,7 @@ function renderOne(e) {
   } else {
     what = `${nm(e.agent)} <span class="chip plain">${esc(e.type)}</span>`;
   }
-  return `<div class="note${cls}">${av(e.agent, true)} ${what} <span class="ago">· ${ago(e.created_at)}</span></div>`;
+  return `<div class="note${cls}">${av(e.agent, true)} ${what}${via(e)} <span class="ago">· ${ago(e.created_at)}</span></div>`;
 }
 
 function renderSide(d) {

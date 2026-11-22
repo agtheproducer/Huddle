@@ -14,6 +14,18 @@ import kotlinx.serialization.json.Json
  */
 class Board(private val file: EventFile?) {
     private val store = InMemoryBoardStore(file?.load().orEmpty())
+    // A verified account keeps its display names across reconnects and server restarts.
+    private val owners = mutableMapOf<String, String>().apply {
+        store.fetchComments().forEach { comment ->
+            val login = comment.verifiedLogin
+            val agent = com.agentboard.core.EventCodec.parse(comment)?.event?.agent
+            if (login != null && agent != null) put(agent.lowercase(), login)
+        }
+    }
+
+    fun mayPost(agent: String, login: String?): Boolean =
+        owners[agent.lowercase()]?.equals(login, ignoreCase = true) ?: true
+
     private val json = Json { ignoreUnknownKeys = true }
     private val listSerializer = ListSerializer(RawComment.serializer())
 
@@ -30,8 +42,10 @@ class Board(private val file: EventFile?) {
      * Appends a comment body that already passed [EventRules.rejection], saves the log
      * and broadcasts it. Returns the created comment as JSON.
      */
-    fun post(body: String): String {
-        val comment = store.postComment(body)
+    fun post(body: String, verifiedLogin: String? = null): String {
+        val agent = com.agentboard.core.EventCodec.parse(RawComment(0, "", "", body))?.event?.agent
+        if (agent != null && verifiedLogin != null) owners[agent.lowercase()] = verifiedLogin
+        val comment = store.append(body, verifiedLogin)
         try {
             file?.save(store.fetchComments())
         } catch (e: Throwable) {
