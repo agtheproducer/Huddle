@@ -39,7 +39,11 @@ class PublicIssueStore(
     private val issueNumber: Int,
     private val apiBase: String = "https://api.github.com",
 ) : BoardStore {
-    private val http = HttpClient.newHttpClient()
+    // Timeouts so a slow GitHub fails fast instead of blocking a thread; default proxy (the IDE's inside IntelliJ).
+    private val http = HttpClient.newBuilder()
+        .connectTimeout(java.time.Duration.ofSeconds(5))
+        .apply { java.net.ProxySelector.getDefault()?.let(::proxy) }
+        .build()
     private var etag: String? = null
     private var cached: List<RawComment> = emptyList()
 
@@ -81,7 +85,7 @@ class PublicIssueStore(
     )
 
     private fun request(page: Int): HttpRequest.Builder =
-        HttpRequest.newBuilder(URI.create("$apiBase/repos/$repo/issues/$issueNumber/comments?per_page=100&page=$page"))
+        HttpRequest.newBuilder(URI.create("$apiBase/repos/$repo/issues/$issueNumber/comments?per_page=100&page=$page")).timeout(java.time.Duration.ofSeconds(15))
             .header("Accept", "application/vnd.github+json")
             .header("X-GitHub-Api-Version", "2022-11-28")
 

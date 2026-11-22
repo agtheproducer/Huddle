@@ -26,10 +26,12 @@ class HttpBoardStore(
 
     override fun fetchComments(): List<RawComment> {
         val body = HttpEngine.get("$baseUrl/api/events")
+        // A reply that is not the event list (a proxy error page, a wrong URL) is an error, not an empty
+        // board: showing "no agents" would hide the problem from the people watching it.
         return try {
             json.decodeFromString(rawCommentListSerializer, body)
         } catch (e: Exception) {
-            emptyList()
+            throw IllegalStateException("$baseUrl did not return board events: ${body.take(120)}", e)
         }
     }
 

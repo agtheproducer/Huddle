@@ -26,7 +26,11 @@ class GitHubIssueStore(
     private val token: String,
     private val apiBase: String = "https://api.github.com",
 ) : BoardStore {
-    private val http = HttpClient.newHttpClient()
+    // Timeouts so a slow GitHub fails fast instead of blocking a thread; default proxy (the IDE's inside IntelliJ).
+    private val http = HttpClient.newBuilder()
+        .connectTimeout(java.time.Duration.ofSeconds(5))
+        .apply { java.net.ProxySelector.getDefault()?.let(::proxy) }
+        .build()
 
     @Serializable
     private data class GhUser(val login: String = "")
@@ -39,7 +43,7 @@ class GitHubIssueStore(
         val body: String? = null,
     )
 
-    private fun request(path: String) = HttpRequest.newBuilder(URI.create("$apiBase/repos/$repo/issues/$issueNumber/$path"))
+    private fun request(path: String) = HttpRequest.newBuilder(URI.create("$apiBase/repos/$repo/issues/$issueNumber/$path")).timeout(java.time.Duration.ofSeconds(15))
         .header("Accept", "application/vnd.github+json")
         .header("Authorization", "Bearer $token")
         .header("X-GitHub-Api-Version", "2022-11-28")
