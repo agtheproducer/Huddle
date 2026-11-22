@@ -12,13 +12,28 @@ repositories {
 
 kotlin {
     jvmToolchain(21)
+    compilerOptions {
+        // Call the platform's interface defaults directly instead of compiling copies of them into our
+        // classes: without this, the Plugin Verifier reports those copies (ToolWindowFactory.isApplicable,
+        // getAnchor, manage...) as our own use of deprecated and experimental API.
+        freeCompilerArgs.add("-jvm-default=no-compatibility")
+    }
 }
 
 dependencies {
     implementation(project(":core"))
+    testImplementation(kotlin("test"))
+    // The IntelliJ test framework's JUnit 5 listener still loads JUnit 4 classes.
+    testImplementation("junit:junit:4.13.2")
     intellijPlatform {
         intellijIdea("2026.2")
+        // The pure logic (wake rules, display rules, settings) is tested without starting an IDE.
+        testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
     }
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
 
 intellijPlatform {
@@ -31,6 +46,14 @@ intellijPlatform {
         }
     }
     buildSearchableOptions = false
+
+    // ./gradlew :idea-plugin:verifyPlugin: JetBrains' compatibility check (internal/deprecated API use,
+    // missing classes) against the IDE version we build for.
+    pluginVerification {
+        ides {
+            create(org.jetbrains.intellij.platform.gradle.IntelliJPlatformType.IntellijIdea, "2026.2")
+        }
+    }
 }
 
 tasks.runIde {

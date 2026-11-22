@@ -9,10 +9,10 @@ import com.intellij.icons.AllIcons
 import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.components.service
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
-import com.intellij.openapi.util.Disposer
 import com.intellij.ui.HyperlinkLabel
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBCheckBox
@@ -42,8 +42,6 @@ import javax.swing.JButton
 import javax.swing.JComponent
 import javax.swing.Scrollable
 import javax.swing.SwingConstants
-import javax.swing.Timer
-import java.util.concurrent.atomic.AtomicReference
 import javax.swing.text.DefaultCaret
 
 /**
@@ -55,13 +53,16 @@ class Dashboard(
     private val parentDisposable: Disposable,
 ) : JBPanel<Dashboard>(BorderLayout()) {
 
-    /** Settings (or environment) this panel shows; replaced when the settings change. */
-    private var config = BoardConfig.current()
-    private val fixtureNames = DemoFixtures.Stage.entries.map { FixtureSource(it).label }
-    private var sourceNames = namesFor(config)
+    /**
+     * The board itself lives in a project service: this panel only draws its snapshots and forwards clicks.
+     * So one project has one poller and one auto-reply, however many times the tool window is opened.
+     */
+    private val service = project.service<BoardService>()
+    private var snapshot: BoardService.Snapshot = service.snapshot()
+    private val config: BoardConfig get() = snapshot.config
 
-    private val stageBox = ComboBox(DefaultComboBoxModel(sourceNames.toTypedArray()))
-    /** True while the combo model is being replaced, so its selection events are ignored. */
+    private val stageBox = ComboBox(DefaultComboBoxModel(snapshot.sourceNames.toTypedArray()))
+    /** True while the panel itself updates the combo, so its selection events are not sent back to the service. */
     private var updatingModel = false
     private val refreshButton = JButton(AllIcons.Actions.Refresh).apply {
         toolTipText = "Refresh"
@@ -74,37 +75,17 @@ class Dashboard(
     private val statusLabel = plainLabel("").apply { foreground = JBColor.GRAY }
 
     /** Off by default: when on, a message for this laptop's agent starts Claude Code to answer it. */
-    private val autoReplyBox = JBCheckBox("Auto-reply").apply {
-        toolTipText = "Let this laptop's agent answer messages addressed to it, by running Claude Code " +
-            "in the background. Each answer is a Claude run and spends credits."
-    }
+    private val autoReplyBox = JBCheckBox("Auto-reply")
     private val autoLabel = plainLabel("").apply {
         foreground = JBUI.CurrentTheme.Focus.focusColor()
         isVisible = false
     }
-    private val autoReply = AutoReply(
-        project,
-        onStatus = { msg ->
-            autoLabel.text = msg ?: ""
-            autoLabel.isVisible = msg != null
-        },
-        onRunFinished = { reload() },
-    )
     private val content = ScrollablePanel()
     private val scrollPane = JBScrollPane(content).apply { border = JBUI.Borders.empty() }
     private var scrollToTopOnRender = true
-
-    private var currentSource: BoardSource? = null
-    @Volatile private var disposed = false
-    /** The source with a load in flight, if any. Switching stage starts a new load right away. */
-    private val inFlight = AtomicReference<BoardSource?>(null)
     private var lastRendered: BoardState? = null
+    private var shownSource = -1
 
-    /** Polls the live board every 5 seconds; fixtures never change, so they are not polled. */
-    private val refreshTimer = Timer(REFRESH_MS) {
-        val src = currentSource
-        if (src is LiveSource || src is HttpSource) reload()
-    }
     /** This laptop's agent, whose cards are outlined. Empty means none. */
     private val currentAgent: String get() = config.agent
     /**
@@ -122,7 +103,7 @@ class Dashboard(
     }
     private val sendButton = JButton("Send")
     private val senderLabel = plainLabel("").apply { foreground = JBColor.GRAY }
-    @Volatile private var sending = false
+    private var sending = false
 
     /** Repo for commit links; the team repo when none is configured (fixtures). */
     private val repo: String get() = config.repo.ifBlank { "agtheproducer/Huddle" }
@@ -143,121 +124,57 @@ class Dashboard(
         add(toolbar, BorderLayout.NORTH)
         add(scrollPane, BorderLayout.CENTER)
         add(composer(), BorderLayout.SOUTH)
-        autoReplyBox.addActionListener { autoReply.setEnabled(autoReplyBox.isSelected, lastRendered) }
+
+        autoReplyBox.addActionListener {
+            service.setAutoReply(autoReplyBox.isSelected)?.let { why ->
+                autoReplyBox.isSelected = false
+                showError(why)
+            }
+        }
         sendButton.addActionListener { send() }
         messageField.addActionListener { send() }
-
-        stageBox.addActionListener { if (!updatingModel) selectSource(stageBox.selectedIndex) }
-        refreshButton.addActionListener { reload() }
+        stageBox.addActionListener { if (!updatingModel) service.select(stageBox.selectedIndex) }
+        refreshButton.addActionListener { service.refresh() }
         settingsButton.addActionListener {
             ShowSettingsUtil.getInstance().showSettingsDialog(project, BoardConfigurable::class.java)
         }
-        ApplicationManager.getApplication().messageBus.connect(parentDisposable)
-            .subscribe(BoardSettingsListener.TOPIC, BoardSettingsListener {
-                ApplicationManager.getApplication().invokeLater { if (!disposed) settingsChanged() }
-            })
-        Disposer.register(parentDisposable) {
-            disposed = true
-            autoReply.dispose()
-            refreshTimer.stop()
-        }
-        refreshTimer.start()
-        // Startup stage: AGENT_BOARD_STAGE if set (e.g. "conflict"), else Live when the live board is
-        // configured, else the first demo stage. A configured laptop should never open on staged data.
-        val requested = System.getenv("AGENT_BOARD_STAGE")
-            ?.let { wanted -> sourceNames.indexOfFirst { it.equals(wanted, ignoreCase = true) } }
-            ?.takeIf { it >= 0 }
-        val initial = requested ?: run {
-            // Prefer HTTP over Live, then fall back to first fixture
-            sourceNames.indexOf(HttpSource.LABEL).takeIf { it >= 0 }
-                ?: sourceNames.indexOf(LiveSource.LABEL).takeIf { it >= 0 }
-                ?: 0
-        }
-        stageBox.selectedIndex = initial  // fires the listener, which loads the board
-        if (initial == 0) selectSource(0)
-        if (!config.liveAvailable && !config.httpAvailable) showStatus("Demo stages only. Set up the live board with ⚙.")
+        // Called on the EDT with every change, and once straight away.
+        service.addListener(parentDisposable) { show(it) }
     }
 
-    private fun namesFor(c: BoardConfig): List<String> {
-        val sources = mutableListOf<String>()
-        if (c.httpAvailable) sources.add(HttpSource.LABEL)
-        if (c.liveAvailable) sources.add(LiveSource.LABEL)
-        return fixtureNames + sources
-    }
-
-    private fun sourceAt(index: Int): BoardSource {
-        val name = sourceNames[index]
-        return when {
-            name == HttpSource.LABEL -> HttpSource(config)
-            name == LiveSource.LABEL -> LiveSource(config)
-            else -> FixtureSource(DemoFixtures.Stage.entries[index])
-        }
-    }
-
-    /** New settings: rebuild the stage list and go to the best live source when available. */
-    private fun settingsChanged() {
-        config = BoardConfig.current()
-        sourceNames = namesFor(config)
-        updatingModel = true
-        try {
-            stageBox.model = DefaultComboBoxModel(sourceNames.toTypedArray())
-        } finally {
-            updatingModel = false
-        }
-        // Prefer HTTP over Live
-        val http = sourceNames.indexOf(HttpSource.LABEL)
-        val live = sourceNames.indexOf(LiveSource.LABEL)
-        val target = http.takeIf { it >= 0 } ?: live.takeIf { it >= 0 }
-        if (target != null) {
-            stageBox.selectedIndex = target
-            selectSource(target)  // always reconnect: the URL, repo, Issue or token may have changed
-        } else {
-            stageBox.selectedIndex = 0
-            selectSource(0)
-            showStatus("Demo stages only. Set up the live board with ⚙.")
-        }
-    }
-
-    private fun selectSource(index: Int) {
-        currentSource = runCatching { sourceAt(index) }.getOrElse { e ->
-            showError("Could not open board: ${e.message}")
-            null
+    /** Draws one snapshot from the service. */
+    private fun show(s: BoardService.Snapshot) {
+        snapshot = s
+        syncStages(s)
+        if (s.selectedIndex != shownSource) {
+            shownSource = s.selectedIndex
+            scrollToTopOnRender = true
+            lastRendered = null
         }
         updateComposer()
-        scrollToTopOnRender = true
-        lastRendered = null
-        reload()
+        autoReplyBox.isSelected = s.autoReplyOn
+        autoLabel.text = s.autoStatus ?: ""
+        autoLabel.isVisible = s.autoStatus != null
+        // Skip the rebuild when nothing changed, so a 5-second poll does not flicker or move the scroll.
+        if (s.state != null && s.state != lastRendered) render(s.state)
+        when {
+            s.error != null -> showError(s.error)
+            s.live && s.loadedAt != null -> showStatus("Last updated ${CLOCK_FORMAT.format(s.loadedAt)}")
+            s.live -> showStatus("Loading…")
+            !config.liveAvailable && !config.httpAvailable -> showStatus("Demo stages only. Set up the live board with ⚙.")
+            else -> showStatus("Demo stage")
+        }
     }
 
-    /**
-     * Loads the current source off the UI thread, then renders on it. GitHub is never called on the UI thread.
-     * The same source is not loaded twice at once, so a slow network cannot pile up requests.
-     */
-    fun reload() {
-        val source = currentSource ?: return
-        if (inFlight.getAndSet(source) === source) return
-        ApplicationManager.getApplication().executeOnPooledThread {
-            val result = try {
-                runCatching { source.load() }
-            } finally {
-                inFlight.compareAndSet(source, null)
-            }
-            ApplicationManager.getApplication().invokeLater {
-                if (disposed || source !== currentSource) return@invokeLater
-                result.fold(
-                    onSuccess = { state ->
-                        // Skip the rebuild when nothing changed, so a 5-second poll does not flicker or move the scroll.
-                        if (state != lastRendered) render(state)
-                        autoReply.onBoard(state, config, source)
-                        showStatus(
-                            if (source is LiveSource || source is HttpSource || config.liveAvailable || config.httpAvailable) "Last updated ${CLOCK_FORMAT.format(Instant.now())}"
-                            else "Demo stages only. Set up the live board with ⚙.",
-                        )
-                    },
-                    // Keep the last good board on screen and say what went wrong.
-                    onFailure = { showError("Could not load board: ${it.message ?: it.javaClass.simpleName}") },
-                )
-            }
+    /** Keeps the stage combo in step with the service without echoing the change back. */
+    private fun syncStages(s: BoardService.Snapshot) {
+        val current = (0 until stageBox.itemCount).map { stageBox.getItemAt(it) }
+        updatingModel = true
+        try {
+            if (current != s.sourceNames) stageBox.model = DefaultComboBoxModel(s.sourceNames.toTypedArray())
+            if (stageBox.selectedIndex != s.selectedIndex) stageBox.selectedIndex = s.selectedIndex
+        } finally {
+            updatingModel = false
         }
     }
 
@@ -276,14 +193,15 @@ class Dashboard(
 
     /** The composer only works on a board that can be posted to: HTTP or Live, never the demo stages. */
     private fun updateComposer() {
-        val live = currentSource is HttpSource || currentSource is LiveSource
+        val live = snapshot.live
         listOf(toBox, messageField, sendButton).forEach { it.isEnabled = live && !sending }
         autoReplyBox.isEnabled = live && currentAgent.isNotBlank()
-        autoReplyBox.toolTipText = if (currentAgent.isBlank()) "Set your agent id in ⚙ to use auto-reply." else
-            "Let $currentAgent answer messages addressed to it, by running Claude Code in the background. Each answer spends Claude credits."
-        if (!live && autoReplyBox.isSelected) {
-            autoReplyBox.isSelected = false
-            autoReply.setEnabled(false, null)
+        autoReplyBox.toolTipText = when {
+            currentAgent.isBlank() -> "Set your agent id in ⚙ to use auto-reply."
+            BoardSettings.get().state.autoReplyMayEdit -> "Let $currentAgent answer and work on messages addressed to it, by running Claude Code " +
+                "in the background. It may edit, build and push (allowed in ⚙). Each answer spends Claude credits."
+            else -> "Let $currentAgent answer messages addressed to it, by running Claude Code in the background. " +
+                "It only reads and answers; allow code changes in ⚙. Each answer spends Claude credits."
         }
         senderLabel.text = if (live) "You post as \"$humanSender\"" else "Switch to HTTP or Live to message the agents."
     }
@@ -299,34 +217,24 @@ class Dashboard(
         toBox.selectedItem = if (selected in wanted) selected else currentAgent.takeIf { it in wanted } ?: EVERYONE
     }
 
-    /** Posts the typed message off the UI thread, then refreshes so it shows up straight away. */
+    /** Hands the typed message to the service, which posts it off the UI thread and refreshes. */
     private fun send() {
         val text = messageField.text.trim()
-        val source = currentSource
-        if (text.isEmpty() || sending || source == null) return
+        if (text.isEmpty() || sending || !snapshot.live) return
         val to = (toBox.selectedItem as? String)?.takeIf { it != EVERYONE }
-        val sender = humanSender
         sending = true
         updateComposer()
-        ApplicationManager.getApplication().executeOnPooledThread {
-            val result = runCatching {
-                val client = source.clientAs(sender) ?: error("This board is read-only")
-                client.sendMessage(text, toAgent = to)
-            }
-            ApplicationManager.getApplication().invokeLater {
-                if (disposed) return@invokeLater
-                sending = false
-                updateComposer()
-                result.fold(
-                    onSuccess = {
-                        messageField.text = ""
-                        showStatus("Sent to ${to ?: "everyone"}")
-                        reload()
-                    },
-                    onFailure = { showError("Could not send: ${it.message ?: it.javaClass.simpleName}") },
-                )
-                messageField.requestFocusInWindow()
-            }
+        service.send(text, to, humanSender) { result ->
+            sending = false
+            updateComposer()
+            result.fold(
+                onSuccess = {
+                    messageField.text = ""
+                    showStatus("Sent to ${to ?: "everyone"}")
+                },
+                onFailure = { showError("Could not send: ${it.message ?: it.javaClass.simpleName}") },
+            )
+            messageField.requestFocusInWindow()
         }
     }
 
@@ -396,7 +304,7 @@ class Dashboard(
 
     /** Title strip: name, live/demo pill, and a one-line summary a judge can read at a glance. */
     private fun header(state: BoardState): JComponent {
-        val live = currentSource is HttpSource || currentSource is LiveSource
+        val live = snapshot.live
         // The tool window already shows "Agent Board", so the strip leads with the state, not the name again.
         val pill: List<JComponent> = if (live) {
             listOf(StatusDot(BoardTheme.LIVE), gap(5), Chip("LIVE", BoardTheme.chipColors("task_claimed").first, BoardTheme.LIVE))
@@ -653,7 +561,6 @@ class Dashboard(
     }
 
     private companion object {
-        const val REFRESH_MS = 5_000
         const val RECENT_COUNT = 3
         const val RECENT_CHARS = 180
         const val EVERYONE = "Everyone"
