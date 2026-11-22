@@ -7,6 +7,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import java.io.File
+import java.time.Instant
 import java.util.concurrent.TimeUnit
 
 /**
@@ -30,13 +31,26 @@ class AutoReply(
     /** Highest comment id already handed to a run (or seen when auto-reply was switched on). */
     @Volatile private var lastHandled = 0L
     @Volatile private var running: Process? = null
+    @Volatile private var baselinePending = false
+
+    private fun baseline(state: BoardState): Long {
+        val cutoff = Instant.now().minusSeconds(CATCH_UP_SECONDS)
+        return state.timeline
+            .filter { p -> runCatching { Instant.parse(p.createdAt) }.getOrNull()?.isBefore(cutoff) ?: true }
+            .maxOfOrNull { it.commentId } ?: 0L
+    }
     private val recentRuns = ArrayDeque<Long>()
 
-    /** Switch on or off. Switching on ignores everything already on the board. */
+    /**
+     * Switch on or off. Switching on ignores older history but still answers the last [CATCH_UP_SECONDS],
+     * so a message sent just before ticking the box (or before an IDE restart) is not lost.
+     */
     fun setEnabled(on: Boolean, current: BoardState?) {
         enabled = on
         if (on) {
-            lastHandled = current?.timeline?.maxOfOrNull { it.commentId } ?: 0L
+            // No board loaded yet: set the baseline on the first load instead, never answer all history.
+            baselinePending = current == null
+            if (current != null) lastHandled = baseline(current)
             onStatus("Auto-reply on: waiting for messages")
         } else {
             running?.destroy()
@@ -53,6 +67,10 @@ class AutoReply(
     fun onBoard(state: BoardState, config: BoardConfig, source: BoardSource) {
         val agent = config.agent
         if (!enabled || agent.isBlank() || running != null) return
+        if (baselinePending) {
+            baselinePending = false
+            lastHandled = baseline(state)
+        }
         // Wake for the agent itself, and for its human ("amit-claude" → "amit"): teammates' agents often
         // address the person ("Amit, please claim calc-frontend"), and that work is the agent's to pick up.
         val human = humanOf(agent)
@@ -60,7 +78,9 @@ class AutoReply(
         val fresh = state.timeline.filter { p ->
             p.commentId > lastHandled &&
                 p.event.toAgent in addressees &&
-                p.event.agent !in addressees &&
+                // Never wake for our own posts; the human writing to the agent is exactly what should wake it.
+                p.event.agent != agent &&
+                !(p.event.agent == human && p.event.toAgent == human) &&
                 p.event.type in WAKE_TYPES &&
                 !(p.event.message ?: "").startsWith(ACK_PREFIX)
         }
@@ -213,10 +233,11 @@ class AutoReply(
         val WAKE_TYPES = setOf(EventType.MESSAGE, EventType.HANDOFF, EventType.CONFLICT)
         const val ACK_PREFIX = "[auto]"
         const val MAX_TURNS = 40
+        const val CATCH_UP_SECONDS = 120L
         const val RUN_TIMEOUT_MIN = 5L
         const val MAX_RUNS_PER_WINDOW = 8
         const val RATE_WINDOW_MS = 10 * 60 * 1000L
         /** Board tools, reading the repo, editing files and git: enough to answer and to work, nothing else. */
-        const val ALLOWED_TOOLS = "mcp__agent-board,Read,Glob,Grep,Edit,Write,Bash(git:*)"
+        const val ALLOWED_TOOLS = "mcp__agent-board,Read,Glob,Grep,Edit,Write,Bash(git:*),Bash(./gradlew:*)"
     }
 }
