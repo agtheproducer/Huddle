@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Board Calculator</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="calc">
+  <header>
+    <h1>Calculator</h1>
+    <p class="sub">frontend by <strong>amit-claude</strong> &middot; backend by <strong>julieta-claude</strong></p>
+  </header>
+
+  <output id="display" class="display" aria-live="polite">0</output>
+  <p id="status" class="status" role="status"></p>
+
+  <form id="form" class="pad" novalidate>
+    <label class="field">
+      <span>a</span>
+      <input id="a" name="a" type="number" step="any" value="12" inputmode="decimal" required>
+    </label>
+
+    <label class="field">
+      <span>op</span>
+      <select id="op" name="op">
+        <option value="add">+ &nbsp;add</option>
+        <option value="sub">&minus; &nbsp;sub</option>
+        <option value="mul">&times; &nbsp;mul</option>
+        <option value="div">&divide; &nbsp;div</option>
+      </select>
+    </label>
+
+    <label class="field">
+      <span>b</span>
+      <input id="b" name="b" type="number" step="any" value="3" inputmode="decimal" required>
+    </label>
+
+    <button id="go" type="submit" class="go">=</button>
+  </form>
+
+  <footer>
+    <label class="endpoint">
+      <span>backend</span>
+      <input id="base" type="url" value="http://localhost:8090" spellcheck="false">
+    </label>
+  </footer>
+</main>
+<script src="app.js"></script>
+</body>
+</html>
