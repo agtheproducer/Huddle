@@ -43,6 +43,11 @@ object BoardTheme {
     val HANDOFF_BG = JBColor(Color(0xF2EDE4), Color(0x263638))
     val HANDOFF_LINE = JBColor(Color(0x7FAFAE), Color(0x4F8E8F))
 
+    /** Your own chat bubbles: otter teal with light text (a deeper teal in dark mode, so the text stays readable). */
+    val MINE_BG = JBColor(Color(0x0B5357), Color(0x1F5C5E))
+    val MINE_TEXT = JBColor(Color(0xF7F7F7), Color(0xEAF4F3))
+    val MINE_META = JBColor(Color(0xB9D6D5), Color(0x9CC3C2))
+
     /** A message addressed to you (or to your agent): a soft teal tint so it stands out in the feed. */
     val FOR_YOU_BG = JBColor(Color(0xE7F1F0), Color(0x1F3436))
 

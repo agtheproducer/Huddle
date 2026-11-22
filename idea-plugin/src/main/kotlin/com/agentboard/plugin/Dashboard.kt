@@ -19,6 +19,7 @@ import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
 import com.intellij.ui.components.JBScrollPane
+import com.intellij.ui.components.JBTabbedPane
 import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.JBFont
@@ -86,6 +87,15 @@ class Dashboard(
     private val content = ScrollablePanel()
     private val scrollPane = JBScrollPane(content).apply { border = JBUI.Borders.empty() }
     private var scrollToTopOnRender = true
+    /** The conversation, in its own tab: chat UX (bubbles, newest at the bottom) apart from the board overview. */
+    private val chatContent = ScrollablePanel()
+    private val chatScroll = JBScrollPane(chatContent).apply { border = JBUI.Borders.empty() }
+    private val tabs = JBTabbedPane().apply {
+        addTab("Chat", chatScroll)
+        addTab("Board", scrollPane)
+        tabComponentInsets = JBUI.emptyInsets()
+    }
+    private var chatFirstRender = true
     private var lastRendered: BoardState? = null
     private var shownSource = -1
     /** The full timeline is long on a busy board: show the newest [TIMELINE_LIMIT] until asked for all. */
@@ -127,7 +137,7 @@ class Dashboard(
             add(statusLabel.apply { border = JBUI.Borders.empty(0, 8, 2, 8) }, BorderLayout.SOUTH)
         }
         add(toolbar, BorderLayout.NORTH)
-        add(scrollPane, BorderLayout.CENTER)
+        add(tabs, BorderLayout.CENTER)
         add(composer(), BorderLayout.SOUTH)
 
         autoReplyBox.addActionListener {
@@ -155,6 +165,7 @@ class Dashboard(
         if (s.selectedIndex != shownSource) {
             shownSource = s.selectedIndex
             showAllTimeline = false
+            chatFirstRender = true
             scrollToTopOnRender = true
             lastRendered = null
         }
@@ -262,23 +273,16 @@ class Dashboard(
     fun render(state: BoardState) {
         lastRendered = state
         updateRecipients(state)
+        renderChat(state)
+
+        // ---- Board tab: who is here, what they own, and what needs attention ----
         content.removeAll()
-
         content.add(header(state))
-        if (snapshot.live && currentAgent.isBlank()) content.add(welcomeCard())
-
         state.openConflicts.forEach { c -> content.add(conflictBanner(c.claimant, c.currentOwner, c.overlappingPaths, c.taskId, c.reason)) }
-
         // The latest handoff is the moment the demo is about, so keep it above the fold.
         state.timeline.lastOrNull { it.event.type == EventType.HANDOFF }?.let { content.add(handoffCard(it, latest = true)) }
-
-        // Newest first, so a message arriving during a live demo is visible without scrolling.
-        // Automatic "[auto] got your message" acknowledgements are left out here: they are noise on stage.
-        val recent = state.timeline.filterNot { it.isAuto() }.takeLast(RECENT_COUNT).asReversed()
-        if (recent.isNotEmpty()) {
-            content.add(sectionTitle("Recent", null))
-            recent.forEach { p -> content.add(timelineRow(p, maxChars = RECENT_CHARS)) }
-        }
+        val conflicts = state.openConflicts.size
+        tabs.setTitleAt(1, if (conflicts > 0) "Board · $conflicts conflict" + (if (conflicts > 1) "s" else "") else "Board")
 
         if (state.timeline.isEmpty()) {
             content.add(quietBoard())
@@ -296,20 +300,113 @@ class Dashboard(
         if (tasks.isEmpty()) content.add(emptyNote("No tasks yet. An agent claims one before it edits files."))
         tasks.forEach { t -> content.add(taskCard(t)) }
 
-        content.add(sectionTitle("Timeline", state.timeline.size))
-        val hidden = if (showAllTimeline) 0 else (state.timeline.size - TIMELINE_LIMIT).coerceAtLeast(0)
-        if (hidden > 0) content.add(linkRow("Show $hidden earlier events") { showAllTimeline = true; render(state) })
+        finishRender()
+    }
+
+    // ---- Chat tab: the conversation, oldest at the top, newest at the bottom next to the message box ----
+
+    private fun renderChat(state: BoardState) {
+        val bar = chatScroll.verticalScrollBar
+        // Follow new messages only when the reader is already at the bottom: never yank someone reading history.
+        val follow = chatFirstRender || bar.value + bar.visibleAmount >= bar.maximum - JBUI.scale(48)
+        chatContent.removeAll()
+        if (snapshot.live && currentAgent.isBlank()) chatContent.add(welcomeCard())
+        state.openConflicts.forEach { c -> chatContent.add(conflictBanner(c.claimant, c.currentOwner, c.overlappingPaths, c.taskId, c.reason)) }
+        if (state.timeline.isEmpty()) chatContent.add(quietBoard())
+
+        val hidden = if (showAllTimeline) 0 else (state.timeline.size - CHAT_LIMIT).coerceAtLeast(0)
+        if (hidden > 0) chatContent.add(linkRow("Show $hidden earlier messages") { showAllTimeline = true; render(state) })
+        var prev: PostedEvent? = null
         state.timeline.drop(hidden).forEach { p ->
-            content.add(
+            val e = p.event
+            chatContent.add(
                 when {
-                    p.event.type == EventType.HANDOFF -> handoffCard(p)
-                    p.isAuto() -> autoRow(p)
-                    else -> timelineRow(p)
+                    p.isAuto() -> systemLine("${e.agent} is on it", p)
+                    e.type == EventType.HANDOFF -> handoffCard(p)
+                    e.type == EventType.MESSAGE || e.type == EventType.PROGRESS -> bubble(p, grouped = continues(prev, p))
+                    else -> systemLine(systemText(e), p, alert = e.type == EventType.CONFLICT)
                 },
             )
+            prev = p
         }
+        chatContent.add(Box.createVerticalStrut(JBUI.scale(8)) as JComponent)
+        chatContent.revalidate()
+        chatContent.repaint()
+        chatFirstRender = false
+        if (follow) ApplicationManager.getApplication().invokeLater { bar.value = bar.maximum }
+    }
 
-        finishRender()
+    /** Same sender, same recipient, within five minutes: one group, so the name and avatar show once. */
+    private fun continues(prev: PostedEvent?, p: PostedEvent): Boolean {
+        if (prev == null || prev.isAuto()) return false
+        val a = prev.event
+        val b = p.event
+        if (a.type != EventType.MESSAGE || b.type != EventType.MESSAGE || a.agent != b.agent || a.toAgent != b.toAgent) return false
+        val gap = runCatching { java.time.Duration.between(Instant.parse(prev.createdAt), Instant.parse(p.createdAt)).toMinutes() }.getOrDefault(99)
+        return gap < 5
+    }
+
+    private fun isMine(agent: String) = currentAgent.isNotBlank() && (agent == currentAgent || agent == humanSender)
+
+    /** A chat bubble: yours on the right in teal, everyone else's on the left after their avatar. */
+    private fun bubble(p: PostedEvent, grouped: Boolean): JComponent {
+        val e = p.event
+        val mine = isMine(e.agent)
+        val forYou = !mine && currentAgent.isNotBlank() && (e.toAgent == currentAgent || e.toAgent == humanSender)
+        val bg = when { mine -> BoardTheme.MINE_BG; forYou -> BoardTheme.FOR_YOU_BG; else -> BoardTheme.CARD_BG }
+        val line = when { mine -> BoardTheme.MINE_BG; forYou -> BoardTheme.ACCENT; else -> BoardTheme.CARD_LINE }
+        val meta: Color = if (mine) BoardTheme.MINE_META else BoardTheme.MUTED
+        val card = RoundedCard(bg, line, if (forYou) 2f else 1f).apply {
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+            border = JBUI.Borders.empty(6, 10, 5, 10)
+        }
+        if (!grouped) {
+            val head = mutableListOf<JComponent>()
+            head += if (mine) plainLabel(if (e.agent == humanSender) "You" else "${e.agent} (your agent)").apply {
+                font = JBFont.small().asBold(); foreground = meta
+            } else nameLabel(e.agent).apply { font = JBFont.small().asBold() }
+            e.toAgent?.let { to ->
+                val toText = when (to) { humanSender -> "you"; currentAgent -> "your agent"; else -> to }
+                head += gap(4)
+                head += plainLabel("→ $toText").apply { font = JBFont.small(); foreground = meta }
+            }
+            card.add(row(*head.toTypedArray()))
+        }
+        val body = text((e.message ?: e.summary ?: "").trim(), if (mine) BoardTheme.MINE_TEXT else null).apply {
+            border = JBUI.Borders.emptyTop(if (grouped) 0 else 2)
+        }
+        card.add(body)
+        val foot = mutableListOf<JComponent>()
+        if (forYou && snapshot.live) foot += linkLabel("Reply") { messageTo(e.agent) }
+        foot += glue()
+        foot += plainLabel(BoardTheme.ago(p.createdAt)).apply { font = JBFont.small(); foreground = meta }
+        card.add(row(*foot.toTypedArray()).padTop(2))
+        val avatar = if (!mine && !grouped) Avatar(e.agent, 22) else null
+        return BubbleRow(avatar, card, body, mine, topGap = if (grouped) 2 else 10)
+    }
+
+    /** Claims, releases, "done" and acknowledgements: one quiet centered line between the bubbles. */
+    private fun systemLine(text: String, p: PostedEvent, alert: Boolean = false): JComponent {
+        val short = if (text.length <= SYSTEM_CHARS) text else text.take(SYSTEM_CHARS).substringBeforeLast(' ') + " …"
+        val label = plainLabel(short).apply {
+            font = JBFont.small()
+            foreground = if (alert) BoardTheme.CONFLICT_TEXT else BoardTheme.MUTED
+            toolTipText = text.takeIf { it != short }
+        }
+        return row(glue(), label, gap(6), plainLabel(BoardTheme.ago(p.createdAt)).muted().small(), glue()).apply {
+            border = JBUI.Borders.empty(6, 12, 2, 12)
+        }
+    }
+
+    private fun systemText(e: com.agentboard.core.BoardEvent): String {
+        val task = e.taskId ?: "a task"
+        return when (e.type) {
+            EventType.TASK_CLAIMED -> "${e.agent} claimed $task" + (e.paths.takeIf { it.isNotEmpty() }?.let { " · " + it.joinToString { p -> fileName(p) } } ?: "")
+            EventType.TASK_DONE -> "${e.agent} finished $task"
+            EventType.TASK_RELEASED -> "${e.agent} released $task"
+            EventType.CONFLICT -> "Conflict: " + (e.message ?: task)
+            else -> "${e.agent}: " + (e.message ?: e.summary ?: e.type)
+        }
     }
 
     private fun finishRender() {
@@ -694,6 +791,8 @@ class Dashboard(
         const val RECENT_COUNT = 3
         const val RECENT_CHARS = 180
         const val TIMELINE_LIMIT = 15
+        const val CHAT_LIMIT = 40
+        const val SYSTEM_CHARS = 80
         const val EVERYONE = "Everyone"
         val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault())
         val CLOCK_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault())
