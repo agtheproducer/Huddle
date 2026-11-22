@@ -42,16 +42,19 @@ intellijPlatform {
         name = "Agent Board"
         version = "0.1.0"
         ideaVersion {
+            // Built against 2026.2 and verified on 2026.2 and 2026.3 (below): claim only what was checked.
             sinceBuild = "262"
+            untilBuild = "263.*"
         }
     }
     buildSearchableOptions = false
 
     // ./gradlew :idea-plugin:verifyPlugin: JetBrains' compatibility check (internal/deprecated API use,
-    // missing classes) against the IDE version we build for.
+    // missing classes) against every IDE version the plugin claims (sinceBuild..untilBuild).
     pluginVerification {
         ides {
             create(org.jetbrains.intellij.platform.gradle.IntelliJPlatformType.IntellijIdea, "2026.2")
+            create(org.jetbrains.intellij.platform.gradle.IntelliJPlatformType.IntellijIdea, "2026.3")
         }
     }
 }

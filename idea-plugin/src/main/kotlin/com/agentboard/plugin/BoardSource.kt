@@ -48,17 +48,20 @@ class LiveSource(private val config: BoardConfig) : BoardSource {
 /**
  * The board from an HTTP server. Real-time, no GitHub token needed.
  * Calls the server on every [load]: call it from a background thread, never the UI thread.
+ * Goes through the IDE's HTTP stack ([IdeHttp]), so the IDE's proxy and certificate settings apply.
  */
 class HttpSource(private val config: BoardConfig) : BoardSource {
     override val label: String = LABEL
 
     private val client: BoardClient by lazy {
-        BoardClient(HttpBoardStore(config.httpUrl), config.agent)
+        BoardClient(store(), config.agent)
     }
 
     override fun load(): BoardState = client.board()
 
-    override fun clientAs(sender: String): BoardClient = BoardClient(HttpBoardStore(config.httpUrl), sender)
+    override fun clientAs(sender: String): BoardClient = BoardClient(store(), sender)
+
+    private fun store() = HttpBoardStore(config.httpUrl, get = IdeHttp::get, post = IdeHttp::post)
 
     companion object {
         const val LABEL = "HTTP"
