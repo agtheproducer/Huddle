@@ -5,169 +5,288 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Agent Board</title>
 <style>
+  /* Projector-first: dark, large type, the conversation on the left, who-does-what on the right.
+     Person colors, chips and wording match the IntelliJ sidebar (BoardTheme.kt). */
   :root {
-    --bg: #0b141a; --bar: #202c33; --mine: #005c4b; --theirs: #202c33;
-    --text: #e9edef; --dim: #8696a0; --line: #2a3942;
-    --bad: #f15c6d; --warn: #f0b429; --handoff: #a78bfa; --good: #25d366;
+    --bg: #111317; --panel: #191c22; --card: #20242b; --line: #2e333c;
+    --text: #eef0f3; --dim: #9aa1ad; --faint: #6c727d;
+    --accent: #548af7; --live: #5fb865;
+    --conflict: #f2a65a; --conflict-bg: #3a2a1b; --conflict-text: #f6c28d;
+    --handoff: #7fa8ff; --handoff-bg: #1f2b45;
+    --claim-bg: #22362a; --claim: #8bd49b;
+    --msg-bg: #2a2e36; --msg: #c3c6ce;
+    --done-bg: #312a45; --done: #c3a8ff;
+    --mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
   body {
     margin: 0; background: var(--bg); color: var(--text);
-    font: 16px/1.45 ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+    font: 18px/1.5 ui-sans-serif, -apple-system, "Segoe UI", Inter, system-ui, sans-serif;
     display: flex; flex-direction: column;
   }
+
+  /* ---- top bar ---- */
   header {
-    background: var(--bar); border-bottom: 1px solid var(--line);
-    padding: 10px 20px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; flex: none;
+    flex: none; display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+    padding: 14px clamp(16px, 3vw, 40px); background: var(--panel); border-bottom: 1px solid var(--line);
   }
-  h1 { font-size: 17px; margin: 0; }
-  .sub { color: var(--dim); font-size: 13px; }
-  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--good); display: inline-block; vertical-align: middle; }
-  .dot.err { background: var(--bad); }
-  .dot.live { animation: pulse 2s ease-in-out infinite; }
-  @keyframes pulse { 50% { opacity: 0.25; } }
-  .who-list { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
-  .chip { font-size: 12px; padding: 3px 10px; border-radius: 999px; background: #111b21; border: 1px solid var(--line); color: var(--dim); }
-  .chip b { color: var(--text); font-weight: 600; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .mark { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center;
+          background: linear-gradient(135deg, #3574f0, #7a4cd6); font-weight: 800; font-size: 15px; letter-spacing: .02em; }
+  .brand h1 { margin: 0; font-size: 22px; font-weight: 750; letter-spacing: -.01em; }
+  .brand .tag { color: var(--dim); font-size: 14px; }
+  .live { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 750; letter-spacing: .08em;
+          color: var(--live); background: var(--claim-bg); padding: 4px 11px; border-radius: 999px; }
+  .live i { width: 9px; height: 9px; border-radius: 50%; background: var(--live); animation: pulse 2s ease-in-out infinite; }
+  .live.off { color: var(--conflict); background: var(--conflict-bg); }
+  .live.off i { background: var(--conflict); }
+  @keyframes pulse { 50% { opacity: .3; } }
+  .stats { margin-left: auto; display: flex; gap: 10px; flex-wrap: wrap; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 6px 14px; text-align: center; min-width: 86px; }
+  .stat b { display: block; font-size: 24px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .stat span { font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: .07em; }
+  .stat.hot { border-color: var(--conflict); background: var(--conflict-bg); }
+  .stat.hot b { color: var(--conflict-text); }
 
-  #chat { flex: 1; overflow-y: auto; padding: 22px clamp(12px, 6vw, 90px); }
-  .row { display: flex; margin-bottom: 10px; }
-  .row.mine { justify-content: flex-end; }
-  .bubble {
-    max-width: min(620px, 78%); background: var(--theirs);
-    border-radius: 12px; padding: 9px 13px 7px; position: relative;
-    box-shadow: 0 1px 1px rgba(0,0,0,.3); animation: pop .22s ease-out;
-  }
-  .row.mine .bubble { background: var(--mine); }
+  /* ---- layout ---- */
+  main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 360px; }
+  @media (max-width: 1050px) { main { grid-template-columns: minmax(0, 1fr); } aside { display: none; } }
+  #chat { overflow-y: auto; padding: 22px clamp(16px, 4vw, 64px) 40px; }
+  aside { overflow-y: auto; border-left: 1px solid var(--line); background: var(--panel); padding: 18px 18px 32px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .1em; color: var(--dim); margin: 18px 4px 10px; font-weight: 750; }
+  h2:first-child { margin-top: 2px; }
+
+  /* ---- shared bits ---- */
+  .av { flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
+        color: #fff; font-weight: 800; font-size: 13px; }
+  .av.sm { width: 24px; height: 24px; font-size: 10px; }
+  .chip { display: inline-block; font-size: 13px; font-weight: 700; padding: 2px 10px; border-radius: 999px; white-space: nowrap; vertical-align: middle; }
+  .chip.claimed { background: var(--claim-bg); color: var(--claim); }
+  .chip.message, .chip.progress { background: var(--msg-bg); color: var(--msg); }
+  .chip.handoff { background: var(--handoff-bg); color: var(--handoff); }
+  .chip.done, .chip.released { background: var(--done-bg); color: var(--done); }
+  .chip.plain { background: var(--msg-bg); color: var(--dim); }
+  .chip.you { background: var(--handoff-bg); color: var(--accent); }
+  .chip.mono, code { font-family: var(--mono); font-size: 13px; }
+  code { background: rgba(255,255,255,.07); border-radius: 6px; padding: 1px 6px; }
+  .name { font-weight: 750; white-space: nowrap; }
+  .dimmed { color: var(--dim); }
+  .ago { color: var(--faint); font-size: 14px; white-space: nowrap; }
+
+  /* ---- conversation ---- */
+  .msg { display: flex; gap: 12px; margin: 0 0 16px; animation: pop .25s ease-out; }
+  .msg .head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 3px; }
+  .msg .head .ago { margin-left: auto; }
+  .msg .body { background: var(--card); border: 1px solid var(--line); border-radius: 4px 14px 14px 14px;
+               padding: 10px 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg.mine .body { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+  .msg .col { min-width: 0; flex: 1; max-width: 900px; }
   @keyframes pop { from { opacity: 0; transform: translateY(8px); } }
-  .name { font-size: 13px; font-weight: 650; color: #53bdeb; margin-bottom: 2px; }
-  .via { font-weight: 400; color: var(--dim); font-size: 12px; }
-  .row.mine .name { color: #9ee7d6; }
-  .body { white-space: pre-wrap; overflow-wrap: anywhere; }
-  .time { font-size: 11px; color: var(--dim); float: right; margin: 6px 0 0 12px; }
-  .row.mine .time { color: #8fd3c2; }
-  .meta { font-size: 12px; color: var(--dim); margin-top: 6px; }
-  code { background: rgba(0,0,0,.35); border-radius: 4px; padding: 1px 5px; font-size: 12px; }
 
-  .note { text-align: center; margin: 14px 0; animation: pop .22s ease-out; }
-  .note span {
-    display: inline-block; background: #182229; color: var(--dim);
-    font-size: 13px; padding: 5px 14px; border-radius: 999px; border: 1px solid var(--line);
-  }
-  .note.conflict span { color: var(--bad); border-color: var(--bad); background: #2a1519; font-weight: 600; }
-  .note.handoff span { color: var(--handoff); border-color: var(--handoff); background: #1e1a2e; }
-  .note.claim span { color: var(--good); border-color: #1f4d38; }
+  .note { display: flex; align-items: center; gap: 10px; margin: 6px 0 16px 46px; color: var(--dim); font-size: 16px; animation: pop .25s ease-out; flex-wrap: wrap; }
+  .auto { margin: -8px 0 12px 46px; color: var(--faint); font-size: 13px; font-style: italic; }
+
+  .moment { border-radius: 16px; padding: 16px 20px; margin: 6px 0 20px; animation: pop .3s ease-out; max-width: 946px; }
+  .moment .title { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 800; }
+  .moment .who { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; font-size: 18px; }
+  .moment .text { margin-top: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .moment .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .moment.handoff { background: var(--handoff-bg); border: 2px solid #3e5a92; }
+  .moment.handoff .title { color: var(--handoff); }
+  .moment.conflict { background: var(--conflict-bg); border: 2px solid var(--conflict); }
+  .moment.conflict .title { color: var(--conflict-text); }
+  a.commit { text-decoration: none; }
+  a.commit:hover .chip { outline: 2px solid var(--handoff); }
+
+  #spotlight .moment.conflict { animation: glow 1.8s ease-in-out infinite; }
+  @keyframes glow { 50% { box-shadow: 0 0 0 6px rgba(242,166,90,.18); } }
 
   .staged { opacity: .45; }
-  .staged .bubble::after {
-    content: "staged"; position: absolute; top: -8px; right: 8px;
-    font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
-    background: var(--warn); color: #000; padding: 1px 6px; border-radius: 999px;
-  }
-  .banner { background: #2a1519; border: 1px solid var(--bad); color: var(--text);
-            border-radius: 10px; padding: 12px 16px; margin: 0 0 16px; }
-  .banner b { color: var(--bad); }
-  .empty { color: var(--dim); text-align: center; margin-top: 40px; font-style: italic; }
+  .error { background: var(--conflict-bg); border: 1px solid var(--conflict); color: var(--conflict-text); border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; }
+  .empty { color: var(--dim); text-align: center; margin-top: 60px; font-size: 20px; }
+
+  /* ---- right column ---- */
+  .agent, .task { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; margin-bottom: 10px; }
+  .agent.mine, .task.mine { border: 2px solid var(--accent); }
+  .agent .top, .task .top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .agent .top .ago, .task .top .chip:last-child { margin-left: auto; }
+  .agent .tasks { margin: 8px 0 0 44px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: 14px; }
+  .task .files { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .task .owner { margin-top: 8px; display: flex; align-items: center; gap: 8px; font-size: 15px; }
+
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
 </style>
 </head>
 <body>
 <header>
-  <h1>Agent Board</h1>
-  <span class="sub"><span id="dot" class="dot live"></span> <span id="source">connecting…</span></span>
-  <div class="who-list" id="who"></div>
+  <div class="brand">
+    <div class="mark">AB</div>
+    <div>
+      <h1>Agent Board</h1>
+      <div class="tag">AI agents from different developers, coordinating in IntelliJ</div>
+    </div>
+  </div>
+  <span id="live" class="live off"><i></i><span>CONNECTING</span></span>
+  <div class="stats" id="stats"></div>
 </header>
 
-<div id="chat"><p class="empty">Connecting to the board…</p></div>
+<main>
+  <div id="chat"><p class="empty">Connecting to the board…</p></div>
+  <aside id="side"></aside>
+</main>
 
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const timeOf = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); };
 const staged = e => (e.message || '').includes('[DEMO]') || (e.task_id || '').startsWith('demo-');
+const isAuto = e => (e.message || '').trim().startsWith('[auto]');
+const fileName = p => String(p).split('/').pop();
+const REPO = 'agtheproducer/Huddle';   // GitHub redirects renamed repos, so commit links keep working
 
-let me = 'amit-claude';
+let me = '';
+let firstRender = true;
 
-// Events that read as conversation get a bubble; the rest are system notes, as in a chat app.
-const SPOKEN = new Set(['message', 'progress']);
+// Same person colors as the IntelliJ sidebar: an agent shares its person's color.
+const PEOPLE = ['#548af7', '#e66e9a', '#3fb68e', '#e08a3a', '#9f7af0', '#3db4cc'];
+const person = a => String(a).split('-')[0].toLowerCase();
+function javaHash(s) { let h = 0; for (const ch of s) h = (Math.imul(31, h) + ch.charCodeAt(0)) | 0; return h; }
+const colorFor = a => PEOPLE[Math.abs(javaHash(person(a))) % PEOPLE.length];
+const initials = a => String(a).split(/[-_ ]/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('') || '?';
+const provider = a => a.endsWith('claude') ? 'Claude' : a.endsWith('junie') ? 'Junie' : a.endsWith('codex') ? 'Codex' : null;
+const av = (a, sm) => `<span class="av${sm ? ' sm' : ''}" style="background:${colorFor(a)}" title="${esc(a)}">${esc(initials(a))}</span>`;
+const nm = a => `<span class="name" style="color:${colorFor(a)}">${esc(a)}</span>`;
+const via = e => e.github_author && e.github_author !== 'local' && e.github_author !== e.agent ? ` <span class="ago">via ${esc(e.github_author)}</span>` : '';
 
-function bits(e) {
-  const out = [];
-  if (e.task_id) out.push(`task <code>${esc(e.task_id)}</code>`);
-  if (e.branch) out.push(`<code>${esc(e.branch)}</code>`);
-  if (e.commit) out.push(`commit <code>${esc(e.commit)}</code>`);
-  return out.join(' · ');
+function ago(iso) {
+  const t = Date.parse(iso); if (isNaN(t)) return '';
+  const s = (Date.now() - t) / 1000;
+  if (s < 45) return 'just now';
+  if (s < 3600) return Math.round(s / 60) + ' min ago';
+  if (s < 6 * 3600) return Math.floor(s / 3600) + ' h ago';
+  return new Date(t).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+}
+const chipText = t => ({task_claimed: 'claimed', task_released: 'released', task_done: 'done'}[t] || t);
+const chipClass = t => ({task_claimed: 'claimed', task_released: 'released', task_done: 'done'}[t] || t);
+
+function commitLink(c) {
+  return `<a class="commit" href="https://github.com/${REPO}/commit/${encodeURIComponent(c)}" target="_blank" rel="noopener">
+    <span class="chip handoff mono">commit ${esc(c)} ↗</span></a>`;
+}
+
+function handoffCard(e) {
+  const chips = [];
+  if (e.task_id) chips.push(`<span class="chip plain">${esc(e.task_id)}</span>`);
+  if (e.branch) chips.push(`<span class="chip plain mono">${esc(e.branch)}</span>`);
+  if (e.commit) chips.push(commitLink(e.commit));
+  return `<div class="moment handoff${staged(e) ? ' staged' : ''}">
+    <div class="title">➜ Work handed over <span class="ago" style="margin-left:auto">${ago(e.created_at)}</span></div>
+    <div class="who">${av(e.agent)} ${nm(e.agent)} <span class="dimmed">→</span> ${av(e.to_agent)} ${nm(e.to_agent)}</div>
+    ${e.message ? `<div class="text">${esc(e.message)}</div>` : ''}
+    <div class="chips">${chips.join('')}</div>
+  </div>`;
+}
+
+function conflictCard(c) {
+  const files = (c.paths || []).map(fileName).join(', ') || c.task_id || 'the same files';
+  return `<div class="moment conflict" title="${esc(c.reason)}">
+    <div class="title">⚠ Heads up: two agents want the same file</div>
+    <div class="who">${av(c.claimant)} ${nm(c.claimant)} <span class="dimmed">wants</span> <span class="chip mono" style="background:#4d3520;color:var(--conflict-text)">${esc(files)}</span></div>
+    <div class="who">${av(c.current_owner)} ${nm(c.current_owner)} <span class="dimmed">already owns it</span></div>
+    <div class="text dimmed">They talk on the board before anyone edits.</div>
+  </div>`;
 }
 
 function renderOne(e) {
   const cls = staged(e) ? ' staged' : '';
-  if (SPOKEN.has(e.type)) {
-    const mine = e.agent === me;
-    const to = e.to_agent ? ` <span style="color:var(--dim);font-weight:400">→ ${esc(e.to_agent)}</span>` : '';
-    const via = e.github_author ? ` <span class="via">via ${esc(e.github_author)}</span>` : '';
-    const m = bits(e);
-    return `<div class="row ${mine ? 'mine' : ''}${cls}"><div class="bubble">
-      <div class="name">${esc(e.agent)}${to}${via}</div>
-      <div class="body">${esc(e.message)}<span class="time">${timeOf(e.created_at)}</span></div>
-      ${m ? `<div class="meta">${m}</div>` : ''}
-    </div></div>`;
+  if (isAuto(e)) return `<div class="auto${cls}">${esc(e.agent)} confirmed it got the message · ${ago(e.created_at)}</div>`;
+  if (e.type === 'handoff') return handoffCard(e);
+  if (e.type === 'message' || e.type === 'progress') {
+    const to = e.to_agent ? ` <span class="dimmed">→</span> ${nm(e.to_agent)}` : '';
+    const tag = e.type === 'progress' ? ` <span class="chip progress">progress</span>` : '';
+    return `<div class="msg${e.agent === me ? ' mine' : ''}${cls}">${av(e.agent)}
+      <div class="col"><div class="head">${nm(e.agent)}${to}${tag}${via(e)}<span class="ago">${ago(e.created_at)}</span></div>
+      <div class="body">${esc(e.message)}</div></div></div>`;
   }
-  let kind = '', text = '';
+  let what = '';
   if (e.type === 'task_claimed') {
-    kind = 'claim';
-    text = `${esc(e.agent)} claimed <b>${esc(e.task_id)}</b>${e.paths.length ? ' — ' + esc(e.paths.join(', ')) : ''}`;
-  } else if (e.type === 'handoff') {
-    kind = 'handoff';
-    text = `${esc(e.agent)} handed <b>${esc(e.task_id)}</b> to <b>${esc(e.to_agent)}</b>` +
-           (e.message ? ` — ${esc(e.message)}` : '') +
-           (e.commit ? ` <code>${esc(e.commit)}</code>` : '');
-  } else if (e.type === 'conflict') {
-    kind = 'conflict';
-    text = `Conflict on ${esc(e.task_id || 'the same files')}${e.message ? ' — ' + esc(e.message) : ''}`;
+    const files = (e.paths || []).map(p => `<span class="chip plain mono" title="${esc(p)}">${esc(fileName(p))}</span>`).join(' ');
+    what = `${nm(e.agent)} <span class="chip claimed">claimed</span> <b>${esc(e.task_id)}</b> ${files}`;
   } else if (e.type === 'task_released') {
-    text = `${esc(e.agent)} released <b>${esc(e.task_id)}</b>`;
+    what = `${nm(e.agent)} <span class="chip released">released</span> <b>${esc(e.task_id)}</b>`;
   } else if (e.type === 'task_done') {
-    text = `${esc(e.agent)} finished <b>${esc(e.task_id)}</b>`;
+    what = `${nm(e.agent)} <span class="chip done">done</span> <b>${esc(e.task_id)}</b>`;
+  } else if (e.type === 'conflict') {
+    what = `${nm(e.agent)} <span class="chip" style="background:var(--conflict-bg);color:var(--conflict-text)">conflict</span> ${esc(e.message)}`;
   } else {
-    text = `${esc(e.agent)} · ${esc(e.type)}`;
+    what = `${nm(e.agent)} <span class="chip plain">${esc(e.type)}</span>`;
   }
-  const sysVia = e.github_author ? ` <span class="via">via ${esc(e.github_author)}</span>` : '';
-  return `<div class="note ${kind}${cls}"><span>${text}${sysVia} · ${timeOf(e.created_at)}</span></div>`;
+  return `<div class="note${cls}">${av(e.agent, true)} ${what} <span class="ago">· ${ago(e.created_at)}</span></div>`;
+}
+
+function renderSide(d) {
+  const agents = [...(d.agents || [])].sort((a, b) => (b.agent === me) - (a.agent === me) || a.agent.localeCompare(b.agent));
+  const lastSeen = {};
+  for (const e of d.timeline || []) lastSeen[e.agent] = e.created_at;
+  let html = `<h2>Agents · ${agents.length}</h2>`;
+  html += agents.map(a => {
+    const p = provider(a.agent);
+    const tasks = a.active_tasks.length
+      ? a.active_tasks.map(t => `<span class="chip claimed">${esc(t)}</span>`).join('') + (a.branch ? ` <span class="dimmed">${esc(a.branch)}</span>` : '')
+      : '<span class="dimmed">free, no task</span>';
+    return `<div class="agent${a.agent === me ? ' mine' : ''}"><div class="top">${av(a.agent)} ${nm(a.agent)}
+      ${p ? `<span class="chip plain">${p}</span>` : ''}${a.agent === me ? '<span class="chip you">you</span>' : ''}
+      <span class="ago">${lastSeen[a.agent] ? ago(lastSeen[a.agent]) : ''}</span></div>
+      <div class="tasks">${tasks}</div></div>`;
+  }).join('') || '<p class="dimmed">No agents yet.</p>';
+  const tasks = d.tasks || [];
+  html += `<h2>Tasks · ${tasks.length}</h2>`;
+  html += tasks.map(t => `<div class="task${t.owner === me ? ' mine' : ''}">
+      <div class="top"><b>${esc(t.task_id)}</b><span class="chip ${t.owner ? 'claimed' : 'released'}">${t.owner ? 'claimed' : 'free'}</span></div>
+      <div class="owner">${t.owner ? av(t.owner, true) + ' ' + nm(t.owner) : '<span class="dimmed">free for anyone</span>'}</div>
+      ${(t.paths || []).length ? `<div class="files">${t.paths.slice(0, 3).map(p => `<span class="chip plain mono" title="${esc(p)}">${esc(fileName(p))}</span>`).join('')}</div>` : ''}
+    </div>`).join('') || '<p class="dimmed">No tasks yet.</p>';
+  $('side').innerHTML = html;
 }
 
 function render(d) {
   me = d.me || me;
-  $('source').textContent = d.source + (d.live ? '' : ' — not live');
-  $('dot').className = 'dot' + (d.error ? ' err' : ' live');
+  const ok = !d.error && d.live;
+  $('live').className = 'live' + (ok ? '' : ' off');
+  $('live').lastElementChild.textContent = d.error ? 'OFFLINE' : d.live ? 'LIVE' : 'DEMO DATA';
+  $('live').title = d.source || '';
 
-  $('who').innerHTML = (d.agents || []).map(a =>
-    `<span class="chip"><b>${esc(a.agent)}</b>${a.active_tasks.length ? ' · ' + esc(a.active_tasks.join(', ')) : ''}</span>`
-  ).join('');
+  const active = (d.tasks || []).filter(t => t.owner).length;
+  const conflicts = (d.conflicts || []).length;
+  $('stats').innerHTML = `
+    <div class="stat"><b>${(d.agents || []).length}</b><span>agents</span></div>
+    <div class="stat"><b>${active}</b><span>active tasks</span></div>
+    <div class="stat${conflicts ? ' hot' : ''}"><b>${conflicts}</b><span>${conflicts === 1 ? 'conflict' : 'conflicts'}</span></div>`;
 
   const chat = $('chat');
-  const nearBottom = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 150;
-
+  // Open on the latest event; afterwards follow new ones only if the viewer has not scrolled up.
+  const nearBottom = firstRender || chat.scrollHeight - chat.scrollTop - chat.clientHeight < 200;
+  firstRender = false;
   let html = '';
-  if (d.error) html += `<div class="banner"><b>Cannot read the board.</b> ${esc(d.error)}<br>Showing the last board received.</div>`;
-  for (const c of d.conflicts || []) {
-    html += `<div class="banner"><b>Conflict:</b> ${esc(c.claimant)} and ${esc(c.current_owner)} both want
-      ${esc(c.task_id || 'the same files')}. ${esc(c.reason)}</div>`;
-  }
+  if (d.error) html += `<div class="error"><b>Cannot reach the board.</b> ${esc(d.error)} Showing the last board received.</div>`;
+  if (conflicts) html += `<div id="spotlight">${d.conflicts.map(conflictCard).join('')}</div>`;
   const tl = d.timeline || [];
-  html += tl.length ? tl.map(renderOne).join('') : '<p class="empty">No events on this board yet.</p>';
+  html += tl.length ? tl.map(renderOne).join('') : '<p class="empty">Nothing on the board yet. Agents appear here when they claim work or talk.</p>';
   chat.innerHTML = html;
-
   if (nearBottom) chat.scrollTop = chat.scrollHeight;
+  renderSide(d);
 }
 
-// Server pushes a new board the moment it changes; no polling from the browser.
-let es;
+// The server pushes a new board the moment it changes; no polling from the browser.
+let es, last;
 function connect() {
   es = new EventSource('/api/stream');
-  es.onmessage = ev => { try { render(JSON.parse(ev.data)); } catch (_) {} };
-  es.onerror = () => { $('dot').className = 'dot err'; $('source').textContent = 'reconnecting…'; };
+  es.onmessage = ev => { try { last = JSON.parse(ev.data); render(last); } catch (_) {} };
+  es.onerror = () => { $('live').className = 'live off'; $('live').lastElementChild.textContent = 'RECONNECTING'; };
 }
 connect();
+// Keep "2 min ago" fresh between updates.
+setInterval(() => { if (last) render(last); }, 30000);
 </script>
 </body>
 </html>
