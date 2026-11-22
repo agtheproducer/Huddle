@@ -5,6 +5,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -51,6 +52,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
@@ -115,6 +122,33 @@ private fun providerOf(agent: String): String? = when {
 }
 private fun PostedEvent.isAuto() = event.message?.trimStart()?.startsWith("[auto]") == true
 
+/**
+ * iOS keeps the keyboard up until focus leaves the text field. Tapping outside a field or dragging
+ * a list closes it, as in native iOS apps. Programmatic scrolls (a new message arriving) do not.
+ */
+@Composable
+private fun Modifier.dismissKeyboard(): Modifier {
+    val focus = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    val connection = remember(focus, keyboard) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source == NestedScrollSource.UserInput) {
+                    focus.clearFocus()
+                    keyboard?.hide()
+                }
+                return Offset.Zero
+            }
+        }
+    }
+    return this.nestedScroll(connection).pointerInput(focus, keyboard) {
+        detectTapGestures(onTap = {
+            focus.clearFocus()
+            keyboard?.hide()
+        })
+    }
+}
+
 @Composable
 fun App() {
     val scope = rememberCoroutineScope()
@@ -133,7 +167,7 @@ private fun WelcomeScreen(model: BoardModel) {
     var name by remember { mutableStateOf("") }
     val clean = BoardModel.clean(name).ifBlank { "name" }
     Column(
-        Modifier.fillMaxSize().background(Bg).safeDrawingPadding().padding(horizontal = 20.dp),
+        Modifier.fillMaxSize().background(Bg).dismissKeyboard().safeDrawingPadding().padding(horizontal = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.weight(1f))
@@ -215,7 +249,7 @@ private fun MainScreen(model: BoardModel) {
     ) {
         Column(Modifier.fillMaxSize().background(Bg).safeDrawingPadding()) {
             Row(
-                Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 6.dp),
+                Modifier.fillMaxWidth().dismissKeyboard().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 CircleButton(onClick = { scope.launch { drawer.open() } }) { MenuIcon() }
@@ -244,7 +278,7 @@ private fun MainScreen(model: BoardModel) {
                 )
             }
             Tabs(tab, model.state?.agents?.size ?: 0) { tab = it }
-            Box(Modifier.weight(1f).fillMaxWidth()) {
+            Box(Modifier.weight(1f).fillMaxWidth().dismissKeyboard()) {
                 if (tab == 0) Overview(model) else AgentsList(model) { model.conversation = it; tab = 0 }
             }
             model.error?.let {
@@ -535,7 +569,7 @@ private fun Composer(model: BoardModel) {
     var picking by remember { mutableStateOf(false) }
     val live = model.source == Source.HTTP
     val agents = model.state?.agents?.keys.orEmpty().filter { it != model.agentId }.sorted()
-    val send = { if (model.send(text)) text = "" }
+    val send: () -> Unit = { if (model.send(text)) { text = "" } }
     val shape = RoundedCornerShape(28.dp)
     Column(
         Modifier.padding(horizontal = 14.dp).fillMaxWidth().clip(shape).background(Field)
@@ -681,7 +715,7 @@ private fun DrawerItem(title: String, subtitle: String, selected: Boolean, agent
 private fun SettingsScreen(model: BoardModel, onClose: () -> Unit) {
     var url by remember { mutableStateOf(model.boardUrl) }
     var name by remember { mutableStateOf(model.name.orEmpty()) }
-    Column(Modifier.fillMaxSize().background(Bg).safeDrawingPadding().padding(horizontal = 20.dp)) {
+    Column(Modifier.fillMaxSize().background(Bg).dismissKeyboard().safeDrawingPadding().padding(horizontal = 20.dp)) {
         Row(Modifier.padding(top = 8.dp, bottom = 24.dp), verticalAlignment = Alignment.CenterVertically) {
             CircleButton(onClick = onClose) { BackIcon() }
             Spacer(Modifier.width(16.dp))
@@ -748,6 +782,7 @@ private fun Help(text: String) {
 
 @Composable
 private fun InputBox(value: String, onChange: (String) -> Unit, enabled: Boolean = true, keyboardType: KeyboardType = KeyboardType.Text) {
+    val focus = LocalFocusManager.current
     Box(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color.White)
             .border(1.dp, Line, RoundedCornerShape(12.dp)).padding(horizontal = 14.dp, vertical = 15.dp),
@@ -755,7 +790,8 @@ private fun InputBox(value: String, onChange: (String) -> Unit, enabled: Boolean
         BasicTextField(
             value = value, onValueChange = onChange, singleLine = true, enabled = enabled,
             textStyle = TextStyle(fontSize = 16.sp, color = if (enabled) Ink else Muted), cursorBrush = SolidColor(Blue),
-            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { focus.clearFocus() }),
             modifier = Modifier.fillMaxWidth(),
         )
     }
