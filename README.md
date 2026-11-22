@@ -67,8 +67,9 @@ The rules the reducer enforces are a coordination contract, not file locks: a la
 
 | Module | What it is |
 | --- | --- |
-| [`core`](core) | Kotlin Multiplatform (JVM + JS). **commonMain**: the engine: `Events` (`BoardEvent`), `EventCodec` (JSON in a fenced block, malformed events skipped, never thrown), `BoardReducer`, `PathOverlap`, `BoardState`, `BoardClient`, the `BoardStore` port with `InMemoryBoardStore`, `HttpBoardStore` (incremental reads with `?since=<lastId>`, a full re-read every 12th poll to notice a wiped board, and an error instead of an empty board when the reply is not the event list), and `DemoFixtures`. **jvmMain**: `GitHubIssueStore` and the HTTP engine (JDK `HttpClient`, 5 s connect / 15 s request timeouts, the default proxy selector, which is the IDE's inside IntelliJ). **jsMain**: the clock, and an HTTP engine stub that throws (the JS side does not make board requests). |
+| [`core`](core) | Kotlin Multiplatform (JVM + JS + iOS). **commonMain**: the engine: `Events` (`BoardEvent`), `EventCodec` (JSON in a fenced block, malformed events skipped, never thrown), `BoardReducer`, `PathOverlap`, `BoardState`, `BoardClient`, the `BoardStore` port with `InMemoryBoardStore`, `HttpBoardStore` (incremental reads with `?since=<lastId>`, a full re-read every 12th poll to notice a wiped board, and an error instead of an empty board when the reply is not the event list), and `DemoFixtures`. **jvmMain**: `GitHubIssueStore` and the HTTP engine (JDK `HttpClient`, 5 s connect / 15 s request timeouts, the default proxy selector, which is the IDE's inside IntelliJ). **jsMain**: the clock, and an HTTP engine stub that throws (the JS side does not make board requests). **iosMain**: the clock and an HTTP engine on `NSURLSession`, the iPhone's own networking stack (15 s timeout). |
 | [`idea-plugin`](idea-plugin) | The IntelliJ tool window. A project-level `BoardService` owns the board: one poller per project as coroutines in the service's scope (network on `Dispatchers.IO`, state and listeners on `Dispatchers.EDT`, a mutex so loads never pile up, cancelled with the project). `Dashboard` only draws the service's snapshot and forwards clicks. The HTTP board goes through IntelliJ's own `HttpRequests` (`IdeHttp`), so the IDE's proxy settings and trusted server certificates apply, with 5 s / 15 s timeouts. Settings → Tools → Agent Board stores the server URL, agent id and GitHub repo/Issue; the GitHub token goes to the IDE's PasswordSafe, never to a file. Opt-in **auto-reply** starts `claude -p` headless when a message for this agent arrives: by default it may only read the project and answer on the board; editing files, Gradle and everyday git need the "Let auto-reply change code" box; force-push, `reset --hard`, `git config` and `git remote` are always denied. It is rate-limited (8 runs per 10 min), and one project per agent id may have it on. |
+| [`mobile`](mobile) + [`iosApp`](iosApp) | **BOB on iPhone**, Compose Multiplatform. The team chat on the phone: messages from people and agents, claims, handoffs and conflicts, a drawer with one conversation per agent plus who is working on what, and a composer that writes to the whole team or to one agent. It reads and posts through core's `HttpBoardStore` + `BoardClient` + `BoardReducer`, the same code as the plugin, polling every 3 s. `iosApp` is the thin Swift shell Xcode builds; it calls `:mobile:embedAndSignAppleFrameworkForXcode`. UI in French, from Gelinas's mockups. |
 | [`mcp`](mcp) | Stdio MCP server (official Kotlin MCP SDK) with 8 tools: `get_board`, `claim_task`, `send_message`, `get_messages`, `ask_agent`, `wait_for_message`, `handoff_task`, `release_task`. `ask_agent` and `wait_for_message` hold the call open up to ~45 s so two agents can actually converse. Picks the HTTP server if `AGENT_BOARD_HTTP_URL` is set, else the GitHub Issue, else demo fixtures. |
 | [`server`](server) | The board server, Kotlin/JS on Node. `GET /api/events[?since=<id>]`, `POST /api/events`, `GET /api/stream` (SSE), CORS. Every POST is validated with the shared Kotlin `EventCodec` (400 if it is not a valid event); bodies over 64 KB get 413, a `message`/`summary` over 8 KB gets 400. Events are kept in core's `InMemoryBoardStore` and saved after each accepted post to a JSON file (temp file + rename; an unreadable file is moved aside, not overwritten). |
 | [`web`](web) | Read-only projector board: a small JVM server (the JDK's built-in `HttpServer`, no framework) that polls the board once and pushes changes to every open browser over SSE. Reads the HTTP server, a GitHub Issue, or demo fixtures. |
@@ -80,8 +81,9 @@ The rules the reducer enforces are a coordination contract, not file locks: a la
 - The board engine (`EventCodec`, `BoardReducer`, `PathOverlap`, `BoardClient`) lives in `core/commonMain`.
 - On the **JVM** it runs in the IntelliJ plugin, the MCP server, the web board and the CLI: each of them folds the log with the same reducer.
 - On **JS**, the Node board server uses the same Kotlin `EventCodec` to validate every event it accepts, and core's `InMemoryBoardStore` to hold them, so the server can never store something a client cannot read back. It does not run the reducer.
+- On **iOS**, the BOB app reads and writes the board with the same `BoardClient` and folds it with the same reducer, so the phone and the IDE always agree on who owns what.
 - The core tests are `commonTest` and run on **JVM, Node and a headless browser**.
-- What is not multiplatform: the HTTP client. `HttpBoardStore`'s logic is common, but its JS engine throws; only the JVM engine makes requests. `GitHubIssueStore` is JVM-only.
+- What is not multiplatform: the HTTP client. `HttpBoardStore`'s logic is common, but its JS engine throws; the JVM and iOS engines make requests. `GitHubIssueStore` is JVM-only.
 
 ## Quality
 
@@ -146,6 +148,16 @@ AGENT_BOARD_HTTP_URL=https://<your-board>.ngrok-free.dev web/build/install/web/b
 Open http://localhost:8080.
 
 Second laptop, step by step, with troubleshooting: [`docs/demo/JOIN.md`](docs/demo/JOIN.md) (written for the GitHub-Issue board; for the HTTP board use the server URL instead of repo, Issue and token).
+
+### BOB on iPhone
+
+Needs a Mac with Xcode and an iOS simulator (Xcode → Settings → Components → iOS), and JDK 21.
+
+1. Open `iosApp/iosApp.xcodeproj` in Xcode.
+2. Pick an iPhone simulator as the run destination, then Run. The build phase runs Gradle (`:mobile:embedAndSignAppleFrameworkForXcode`); the first time it downloads the Kotlin/Native toolchain, which takes a few minutes.
+3. On a real iPhone, set your team under Signing & Capabilities first.
+
+The app talks to the team board in `.bob/board.json` by default; change it under Réglages (the gear).
 
 ## Limits and what's next
 

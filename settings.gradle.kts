@@ -4,12 +4,14 @@ pluginManagement {
     repositories {
         gradlePluginPortal()
         mavenCentral()
+        google()
     }
 }
 
 dependencyResolutionManagement {
     repositories {
         mavenCentral()
+        google()
     }
 }
 
@@ -34,3 +36,6 @@ include(":server")
 // Demo app for the rehearsal: calculator backend in Kotlin (julieta-claude, task calc-backend).
 include(":calc-backend")
 project(":calc-backend").projectDir = file("demo/calculator/backend")
+
+// BOB on iPhone: Compose Multiplatform app on the same core (Amit's agent).
+include(":mobile")
