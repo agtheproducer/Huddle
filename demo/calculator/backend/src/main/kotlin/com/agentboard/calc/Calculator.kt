@@ -1,13 +1,13 @@
 package com.agentboard.calc
 
-/** The four operations the frontend can ask for, by their names in the URL. */
+/** The operations the frontend can ask for, by their names in the URL. */
 enum class Op(val symbol: String) {
-    ADD("+"), SUB("−"), MUL("×"), DIV("÷");
+    ADD("+"), SUB("−"), MUL("×"), DIV("÷"), POW("^");
 
     companion object {
         fun parse(name: String?): Op =
             entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
-                ?: throw CalcException("op must be one of add, sub, mul, div")
+                ?: throw CalcException("op must be one of add, sub, mul, div, pow")
     }
 }
 
@@ -20,6 +20,8 @@ object Calculator {
         Op.SUB -> a - b
         Op.MUL -> a * b
         Op.DIV -> if (b == 0.0) throw CalcException("cannot divide by zero") else a / b
+        Op.POW -> Math.pow(a, b).takeIf { it.isFinite() }
+            ?: throw CalcException("a to the power of b is not a finite number")
     }
 
     /** Parses one number from the URL, with a message that names the field. */

@@ -17,6 +17,7 @@ Small HTTP backend for the Agent Board demo calculator.
 | `sub` | a − b |
 | `mul` | a × b |
 | `div` | a ÷ b (division by zero → 400) |
+| `pow` | a ^ b (a non-finite result, e.g. `0^-1` → 400) |
 
 Bad input returns `400 {"error":"..."}`. CORS is open, so the frontend in
 `demo/calculator/frontend` can call it from any page.
