@@ -9,7 +9,17 @@ const statusEl = document.getElementById('status');
 const go = document.getElementById('go');
 const base = document.getElementById('base');
 
-const SYMBOL = { add: '+', sub: '−', mul: '×', div: '÷' };
+const SYMBOL = { add: '+', sub: '−', mul: '×', div: '÷', pow: '^' };
+
+// pow arrived in the backend after index.html was written, so add its option here
+// instead of editing a file owned by another agent.
+const opSelect = document.getElementById('op');
+if (!opSelect.querySelector('option[value="pow"]')) {
+  const powOption = document.createElement('option');
+  powOption.value = 'pow';
+  powOption.textContent = '^  pow';
+  opSelect.append(powOption);
+}
 
 function show(text, isError) {
   display.textContent = text;
@@ -69,6 +79,6 @@ form.addEventListener('submit', (e) => {
 });
 
 // Enter in a number field submits; recalc when the operator changes.
-document.getElementById('op').addEventListener('change', calculate);
+opSelect.addEventListener('change', calculate);
 
 calculate();
