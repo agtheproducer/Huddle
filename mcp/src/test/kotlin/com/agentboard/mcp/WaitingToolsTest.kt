@@ -84,6 +84,19 @@ class WaitingToolsTest {
     }
 
     @Test
+    fun `ask_agent skips the auto acknowledgement and returns the real answer`() {
+        onSleep = { n ->
+            if (n == 1) amit.sendMessage(args("message" to "[auto] amit-claude got your message and is on it.", "to_agent" to "julieta-claude"))
+            if (n == 4) amit.sendMessage(args("message" to "Blocked on a permission prompt", "to_agent" to "julieta-claude"))
+        }
+
+        val result = julieta.askAgent(args("to_agent" to "amit-claude", "question" to "What is blocking the push?"))
+
+        assertTrue(result.bool("answered"))
+        assertEquals(listOf("Blocked on a permission prompt"), result.messages("replies"))
+    }
+
+    @Test
     fun `asking yourself is refused`() {
         assertFailsWith<ToolInputException> { julieta.askAgent(args("to_agent" to "julieta-claude", "question" to "hi")) }
     }

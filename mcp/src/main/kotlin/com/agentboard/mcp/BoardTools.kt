@@ -110,7 +110,8 @@ class BoardTools(
             toAgent = toAgent,
             taskId = args.optString("task_id"),
         )
-        val replies = pollFor(posted.commentId, waitMillis(args)) { it.event.agent == toAgent }
+        // An "[auto]" acknowledgement only says the message arrived; keep waiting for the real answer.
+        val replies = pollFor(posted.commentId, waitMillis(args)) { it.event.agent == toAgent && !it.isAutoAck() }
         return buildJsonObject {
             put("asked", true)
             put("question_comment_id", posted.commentId)
@@ -227,6 +228,9 @@ class BoardTools(
         e.commit?.let { put("commit", it) }
     }
 }
+
+/** Automatic "got your message" replies, which listeners post before the real answer. */
+internal fun PostedEvent.isAutoAck(): Boolean = event.message?.trimStart()?.startsWith("[auto]") == true
 
 // --- argument helpers ------------------------------------------------------
 
