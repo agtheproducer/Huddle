@@ -39,3 +39,7 @@ project(":calc-backend").projectDir = file("demo/calculator/backend")
 
 // BOB on iPhone: Compose Multiplatform app on the same core (Amit's agent).
 include(":mobile")
+
+// Rehearsal stage: a local page showing demo/calculator live (files, code, running app) on :8095.
+include(":demo-stage")
+project(":demo-stage").projectDir = file("demo/stage")

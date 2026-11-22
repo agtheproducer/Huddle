@@ -1,0 +1,7 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Rehearsal" type="CompoundRunConfigurationType">
+    <toRun name="Calculator backend" type="GradleRunConfiguration" />
+    <toRun name="Rehearsal stage" type="GradleRunConfiguration" />
+    <method v="2" />
+  </configuration>
+</component>

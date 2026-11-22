@@ -75,6 +75,7 @@ The rules the reducer enforces are a coordination contract, not file locks: a la
 | [`web`](web) | Read-only projector board: a small JVM server (the JDK's built-in `HttpServer`, no framework) that polls the board once and pushes changes to every open browser over SSE. Reads the HTTP server, a GitHub Issue, or demo fixtures. |
 | [`cli`](cli) | Command line for the GitHub Issue board: `board`, `claim`, `say`, `handoff`, `release`, and `replay-demo` to replay the scripted story. |
 | [`demo/calculator/backend`](demo/calculator/backend) | The small Kotlin app the agents build during the demo (a calculator API with tests). Not part of the board. |
+| [`demo/stage`](demo/stage) | Rehearsal stage on `localhost:8095`: the `demo/calculator` folder live (files that just changed light up, a code viewer, the running app reloaded on every frontend edit, backend up/down). Run configuration **Rehearsal** starts it with the backend. |
 
 ## Kotlin Multiplatform, precisely
 
