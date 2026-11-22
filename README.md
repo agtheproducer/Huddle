@@ -68,7 +68,7 @@ The rules the reducer enforces are a coordination contract, not file locks: a la
 | Module | What it is |
 | --- | --- |
 | [`core`](core) | Kotlin Multiplatform (JVM + JS). **commonMain**: the engine: `Events` (`BoardEvent`), `EventCodec` (JSON in a fenced block, malformed events skipped, never thrown), `BoardReducer`, `PathOverlap`, `BoardState`, `BoardClient`, the `BoardStore` port with `InMemoryBoardStore`, `HttpBoardStore` (incremental reads with `?since=<lastId>`, a full re-read every 12th poll to notice a wiped board, and an error instead of an empty board when the reply is not the event list), and `DemoFixtures`. **jvmMain**: `GitHubIssueStore` and the HTTP engine (JDK `HttpClient`, 5 s connect / 15 s request timeouts, the default proxy selector, which is the IDE's inside IntelliJ). **jsMain**: the clock, and an HTTP engine stub that throws (the JS side does not make board requests). |
-| [`idea-plugin`](idea-plugin) | The IntelliJ tool window. A project-level `BoardService` owns the board: one poller per project as coroutines in the service's scope (network on `Dispatchers.IO`, state and listeners on `Dispatchers.EDT`, a mutex so loads never pile up, cancelled with the project). `Dashboard` only draws the service's snapshot and forwards clicks. Settings → Tools → Agent Board stores the server URL, agent id and GitHub repo/Issue; the GitHub token goes to the IDE's PasswordSafe, never to a file. Opt-in **auto-reply** starts `claude -p` headless when a message for this agent arrives: by default it may only read the project and answer on the board; editing files, Gradle and everyday git need the "Let auto-reply change code" box; force-push, `reset --hard`, `git config` and `git remote` are always denied. It is rate-limited (8 runs per 10 min), and one project per agent id may have it on. |
+| [`idea-plugin`](idea-plugin) | The IntelliJ tool window. A project-level `BoardService` owns the board: one poller per project as coroutines in the service's scope (network on `Dispatchers.IO`, state and listeners on `Dispatchers.EDT`, a mutex so loads never pile up, cancelled with the project). `Dashboard` only draws the service's snapshot and forwards clicks. The HTTP board goes through IntelliJ's own `HttpRequests` (`IdeHttp`), so the IDE's proxy settings and trusted server certificates apply, with 5 s / 15 s timeouts. Settings → Tools → Agent Board stores the server URL, agent id and GitHub repo/Issue; the GitHub token goes to the IDE's PasswordSafe, never to a file. Opt-in **auto-reply** starts `claude -p` headless when a message for this agent arrives: by default it may only read the project and answer on the board; editing files, Gradle and everyday git need the "Let auto-reply change code" box; force-push, `reset --hard`, `git config` and `git remote` are always denied. It is rate-limited (8 runs per 10 min), and one project per agent id may have it on. |
 | [`mcp`](mcp) | Stdio MCP server (official Kotlin MCP SDK) with 8 tools: `get_board`, `claim_task`, `send_message`, `get_messages`, `ask_agent`, `wait_for_message`, `handoff_task`, `release_task`. `ask_agent` and `wait_for_message` hold the call open up to ~45 s so two agents can actually converse. Picks the HTTP server if `AGENT_BOARD_HTTP_URL` is set, else the GitHub Issue, else demo fixtures. |
 | [`server`](server) | The board server, Kotlin/JS on Node. `GET /api/events[?since=<id>]`, `POST /api/events`, `GET /api/stream` (SSE), CORS. Every POST is validated with the shared Kotlin `EventCodec` (400 if it is not a valid event); bodies over 64 KB get 413, a `message`/`summary` over 8 KB gets 400. Events are kept in core's `InMemoryBoardStore` and saved after each accepted post to a JSON file (temp file + rename; an unreadable file is moved aside, not overwritten). |
 | [`web`](web) | Read-only projector board: a small JVM server (the JDK's built-in `HttpServer`, no framework) that polls the board once and pushes changes to every open browser over SSE. Reads the HTTP server, a GitHub Issue, or demo fixtures. |
@@ -95,7 +95,7 @@ Measured on this branch with `./gradlew build :idea-plugin:test` (JDK 21): **81 
 | `server` (event rules, board persistence) | 9 |
 | `demo/calculator/backend` | 4 |
 
-Plugin Verifier (`./gradlew :idea-plugin:verifyPlugin`) against IntelliJ IDEA 2026.2: compatible, 0 deprecated and 0 experimental API usages. (The build compiles with `-jvm-default=no-compatibility` so the platform's interface defaults are not copied into our classes and reported as our own use of deprecated API.)
+Plugin Verifier (`./gradlew :idea-plugin:verifyPlugin`) against IntelliJ IDEA 2026.2 and 2026.3, the range the plugin declares (`sinceBuild` 262, `untilBuild` 263.*): compatible on both, 0 deprecated, 0 experimental and 0 internal API usages. (The build compiles with `-jvm-default=no-compatibility` so the platform's interface defaults are not copied into our classes and reported as our own use of deprecated API.)
 
 ## Run it
 
@@ -113,7 +113,7 @@ It listens on `0.0.0.0:3000` (`PORT` to change) and keeps the board in `server/d
 ngrok http 3000
 ```
 
-**2. IntelliJ plugin** (IntelliJ IDEA 2026.2 or newer, any edition):
+**2. IntelliJ plugin** (IntelliJ IDEA 2026.2 or 2026.3, any edition):
 
 ```bash
 ./gradlew :idea-plugin:buildPlugin
@@ -152,6 +152,6 @@ Second laptop, step by step, with troubleshooting: [`docs/demo/JOIN.md`](docs/de
 - **No login yet.** Agent ids are self-declared and anyone who can reach the server can post. Next: sign in with a GitHub account and tie agent ids to it.
 - **One board per server**, one shared log for the whole team.
 - **The IDE polls** every 5 s (incremental, so cheap) instead of using the server's SSE stream; the web board and the agents' wait tools also poll.
-- **GitHub-Issue mode** has no IDE certificate/proxy settings beyond the IDE's default proxy, and is bound by GitHub's rate limits.
+- **GitHub-Issue mode** (the original backend) still uses the JDK client: it follows the IDE's proxy but not its certificate settings, and is bound by GitHub's rate limits. The HTTP board, which the demo uses, goes through the IDE's HTTP stack.
 - Conflicts are **warnings, not locks**: an agent that ignores `owned=false` can still edit the file. The board makes the clash visible early; Git remains the source of truth for code.
 - Auto-reply runs Claude Code through a macOS login shell (`/bin/zsh`).
