@@ -2,10 +2,7 @@ package com.agentboard.plugin
 
 import com.agentboard.core.BrowserLogin
 import com.agentboard.core.BoardSignIn
-import com.intellij.credentialStore.CredentialAttributes
-import com.intellij.credentialStore.generateServiceName
 import com.intellij.ide.BrowserUtil
-import com.intellij.ide.passwordSafe.PasswordSafe
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.Task
@@ -15,8 +12,9 @@ import javax.swing.JOptionPane
 import javax.swing.SwingUtilities
 
 internal object GithubSignIn {
-    private fun key(board: String) = CredentialAttributes(generateServiceName("BOB board session", board))
-    fun session(board: String): String? = PasswordSafe.instance.getPassword(key(board.trimEnd('/')))
+    // A board session belongs to this IDE run and board origin. Closing the IDE discards it.
+    private val sessions = java.util.concurrent.ConcurrentHashMap<String, String>()
+    fun session(board: String): String? = sessions[board.trimEnd('/')]
 
     fun currentLogin(raw: String): String? {
         val board = BoardSignIn.endpoint(raw)
@@ -45,7 +43,7 @@ internal object GithubSignIn {
                     BoardSignIn.exchange(board, credential)
                 }
                 login = result.getValue("login").jsonPrimitive.content
-                PasswordSafe.instance.setPassword(key(board), result.getValue("session").jsonPrimitive.content)
+                sessions[board] = result.getValue("session").jsonPrimitive.content
             }
             override fun onSuccess() {
                 if (login.isNotEmpty() && !project.isDisposed) {
