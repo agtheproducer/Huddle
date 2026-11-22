@@ -27,6 +27,11 @@ class BoardSettings : PersistentStateComponent<BoardSettings.Values> {
         var httpUrl: String = ""
         /** Whether a token was saved in the password safe, so the UI thread never has to read it. */
         var tokenSaved: Boolean = false
+        /**
+         * Whether an unattended auto-reply run may change code (edit files, Gradle, git). Off by default:
+         * board messages come from anyone who can reach the board, so unattended runs only answer.
+         */
+        var autoReplyMayEdit: Boolean = false
     }
 
     private var values = Values()

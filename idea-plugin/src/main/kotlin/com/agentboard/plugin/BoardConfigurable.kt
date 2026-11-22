@@ -23,6 +23,7 @@ class BoardConfigurable : Configurable {
     private val agentField = JBTextField().apply { emptyText.text = "your agent id, e.g. amit-claude" }
     private val tokenField = JBPasswordField()
     private val clearToken = JBCheckBox("Remove the saved token")
+    private val mayEdit = JBCheckBox("Let auto-reply change code (edit files, run Gradle and git)")
 
     override fun getDisplayName(): String = "Agent Board"
 
@@ -45,6 +46,12 @@ class BoardConfigurable : Configurable {
             "Empty fields use the AGENT_BOARD_REPO, AGENT_BOARD_ISSUE, AGENT_BOARD_AGENT, " +
                 "AGENT_BOARD_HTTP_URL and GITHUB_TOKEN environment variables instead.",
         ))
+        .addComponent(mayEdit, JBUI.scale(12))
+        .addComponentToRightColumn(hint(
+            "Off: an auto-reply run only reads the project and answers on the board. On: it may also edit files, " +
+                "build and push, without asking you first. Anyone who can post to the board can ask it to, so only " +
+                "turn this on for a board you trust. Force-push and hard reset stay blocked either way.",
+        ))
         .addComponentFillVertically(javax.swing.JPanel(), 0)
         .panel
 
@@ -61,7 +68,8 @@ class BoardConfigurable : Configurable {
             issueField.text.trim() != s.issue ||
             agentField.text.trim() != s.agent ||
             tokenField.password.isNotEmpty() ||
-            clearToken.isSelected
+            clearToken.isSelected ||
+            mayEdit.isSelected != s.autoReplyMayEdit
     }
 
     override fun apply() {
@@ -70,6 +78,7 @@ class BoardConfigurable : Configurable {
         s.repo = repoField.text.trim()
         s.issue = issueField.text.trim()
         s.agent = agentField.text.trim()
+        s.autoReplyMayEdit = mayEdit.isSelected
 
         val newToken = String(tokenField.password).trim().takeIf { it.isNotEmpty() }
         val removeToken = clearToken.isSelected && newToken == null
@@ -98,5 +107,6 @@ class BoardConfigurable : Configurable {
         tokenField.emptyText.text = if (s.tokenSaved) "saved — type a new one to replace it" else "not saved"
         clearToken.isSelected = false
         clearToken.isEnabled = s.tokenSaved
+        mayEdit.isSelected = s.autoReplyMayEdit
     }
 }
