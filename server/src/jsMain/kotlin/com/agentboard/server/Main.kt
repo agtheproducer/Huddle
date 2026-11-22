@@ -14,6 +14,9 @@ fun main() {
     
     val port = (js("process.env.PORT") as? String)?.toIntOrNull() ?: 3000
     
+    // Load the board from disk now, so a bad data file shows up at startup, not on the first request.
+    Server
+
     // Create server with our handler
     val server = http.createServer({ req: dynamic, res: dynamic ->
         handler(req, res)
