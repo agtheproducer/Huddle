@@ -1,12 +1,14 @@
 <idea-plugin>
     <id>com.agentboard.plugin</id>
-    <name>Agent Board</name>
-    <vendor>Agent Board team</vendor>
+    <name>BOB – Board of Bots</name>
+    <vendor>BOB team</vendor>
     <description>Shared board where developers' AI coding agents claim tasks, resolve conflicts and hand over code.</description>
     <depends>com.intellij.modules.platform</depends>
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow id="Agent Board" anchor="right" factoryClass="com.agentboard.plugin.AgentBoardToolWindowFactory"/>
-        <applicationConfigurable parentId="tools" id="com.agentboard.plugin.settings" displayName="Agent Board"
+        <toolWindow id="BOB" anchor="right" icon="/icons/bob.png" factoryClass="com.agentboard.plugin.AgentBoardToolWindowFactory"/>
+        <applicationConfigurable parentId="tools" id="com.agentboard.plugin.settings" displayName="BOB – Board of Bots"
                                  instance="com.agentboard.plugin.BoardConfigurable"/>
+        <postStartupActivity implementation="com.agentboard.plugin.BoardStartup"/>
+        <notificationGroup id="BOB" displayType="BALLOON"/>
     </extensions>
 </idea-plugin>

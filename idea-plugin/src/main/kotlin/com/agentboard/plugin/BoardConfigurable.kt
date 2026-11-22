@@ -25,7 +25,7 @@ class BoardConfigurable : Configurable {
     private val clearToken = JBCheckBox("Remove the saved token")
     private val mayEdit = JBCheckBox("Let auto-reply change code (edit files, run Gradle and git)")
 
-    override fun getDisplayName(): String = "Agent Board"
+    override fun getDisplayName(): String = "BOB – Board of Bots"
 
     override fun createComponent(): JComponent = FormBuilder.createFormBuilder()
         .addLabeledComponent("HTTP server URL:", httpUrlField)

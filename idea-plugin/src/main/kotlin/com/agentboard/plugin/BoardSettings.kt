@@ -75,6 +75,8 @@ data class BoardConfig(
     val httpUrl: String,
     private val tokenInSettings: Boolean,
     private val envToken: String?,
+    /** Where [httpUrl] came from when nobody typed one: the board link published in the repo, else null. */
+    val httpFromRepo: String? = null,
 ) {
     /** Enough to read the live board: a repo, a numeric Issue and a token from either place. */
     val liveAvailable: Boolean
@@ -83,6 +85,10 @@ data class BoardConfig(
     /** Whether an HTTP server URL is configured. */
     val httpAvailable: Boolean
         get() = httpUrl.isNotBlank()
+
+    /** Uses the board link published in the repo when no URL was typed in Settings or the environment. */
+    fun withRepoLink(link: RepoBoardLink.Link?): BoardConfig =
+        if (httpUrl.isBlank() && link != null) copy(httpUrl = link.url, httpFromRepo = link.from) else this
 
     /** The token: the saved one first, else GITHUB_TOKEN. Can block: call it off the UI thread. */
     fun token(): String? = (if (tokenInSettings) BoardSettings.readToken() else null) ?: envToken?.takeIf { it.isNotBlank() }

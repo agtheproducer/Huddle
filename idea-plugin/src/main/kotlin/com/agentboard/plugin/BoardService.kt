@@ -41,6 +41,8 @@ class BoardService(private val project: Project, private val cs: CoroutineScope)
         val loadedAt: Instant?,
         val autoReplyOn: Boolean,
         val autoStatus: String?,
+        /** A first name to offer as the agent id while none is set ("amit" from git's user.name). */
+        val suggestedName: String,
     )
 
     /** Told on the EDT whenever the snapshot changes. */
@@ -60,6 +62,9 @@ class BoardService(private val project: Project, private val cs: CoroutineScope)
     private var error: String? = null
     private var loadedAt: Instant? = null
     private var autoStatus: String? = null
+    /** The board link the repo publishes (RepoBoardLink), found once in the background. */
+    @Volatile private var repoLink: RepoBoardLink.Link? = null
+    @Volatile private var suggestedName: String = ""
 
     private val listeners = CopyOnWriteArrayList<Listener>()
     /** One load at a time: a slow network cannot pile up requests. */
@@ -78,6 +83,16 @@ class BoardService(private val project: Project, private val cs: CoroutineScope)
             .subscribe(BoardSettingsListener.TOPIC, BoardSettingsListener {
                 cs.launch(Dispatchers.EDT) { reconfigure() }
             })
+        // Zero-setup: find the board the repo links to and a name to suggest, then reconnect if that changed anything.
+        cs.launch(Dispatchers.IO) {
+            val link = runCatching { RepoBoardLink.discover(project) }.getOrNull()
+            val name = runCatching { RepoBoardLink.suggestedName(project.basePath?.let { java.io.File(it) }) }.getOrDefault("")
+            withContext(Dispatchers.EDT) {
+                suggestedName = name
+                repoLink = link
+                if (link != null && config.httpUrl.isBlank()) reconfigure() else publish()
+            }
+        }
         cs.launch(Dispatchers.EDT) {
             selectInitial()
             // Live boards change; demo stages do not, so they are loaded once and never polled.
@@ -89,8 +104,21 @@ class BoardService(private val project: Project, private val cs: CoroutineScope)
     }
 
     fun snapshot() = Snapshot(
-        sourceNames, selectedIndex, isLive, config, state, error, loadedAt, autoReply.enabled, autoStatus,
+        sourceNames, selectedIndex, isLive, config, state, error, loadedAt, autoReply.enabled, autoStatus, suggestedName,
     )
+
+    /**
+     * First run: saves [name] as this person's agent id ("amit" → "amit-claude") and reconnects.
+     * Call on the EDT. Returns why the name was refused, or null.
+     */
+    fun join(name: String): String? {
+        val clean = name.trim().lowercase().replace(Regex("[^a-z0-9-]"), "")
+        if (clean.isEmpty()) return "Type a name, e.g. ${suggestedName.ifBlank { "amit" }}"
+        val agent = if ('-' in clean) clean else "$clean-claude"
+        BoardSettings.get().state.agent = agent
+        ApplicationManager.getApplication().messageBus.syncPublisher(BoardSettingsListener.TOPIC).settingsChanged()
+        return null
+    }
 
     /** Adds [listener] until [parent] is disposed, and tells it the current snapshot straight away. */
     fun addListener(parent: Disposable, listener: Listener) {
@@ -197,7 +225,7 @@ class BoardService(private val project: Project, private val cs: CoroutineScope)
     /** New settings: rebuild the stage list and reconnect to the best live source. */
     private fun reconfigure() {
         val oldAgent = config.agent
-        config = BoardConfig.current()
+        config = BoardConfig.current().withRepoLink(repoLink)
         if (oldAgent != config.agent && autoReply.enabled) {
             AUTO_REPLY_OWNERS.remove(oldAgent, project)
             autoReply.setEnabled(false, null)

@@ -38,6 +38,9 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import javax.swing.BoxLayout
 import javax.swing.DefaultComboBoxModel
+import javax.swing.ImageIcon
+import java.awt.Image
+import javax.imageio.ImageIO
 import javax.swing.JButton
 import javax.swing.JComponent
 import javax.swing.Scrollable
@@ -69,7 +72,7 @@ class Dashboard(
         putClientProperty("JButton.buttonType", "square")
     }
     private val settingsButton = JButton(AllIcons.General.Settings).apply {
-        toolTipText = "Agent Board settings"
+        toolTipText = "BOB settings"
         putClientProperty("JButton.buttonType", "square")
     }
     private val statusLabel = plainLabel("").apply { foreground = JBColor.GRAY }
@@ -85,6 +88,8 @@ class Dashboard(
     private var scrollToTopOnRender = true
     private var lastRendered: BoardState? = null
     private var shownSource = -1
+    /** The full timeline is long on a busy board: show the newest [TIMELINE_LIMIT] until asked for all. */
+    private var showAllTimeline = false
 
     /** This laptop's agent, whose cards are outlined. Empty means none. */
     private val currentAgent: String get() = config.agent
@@ -132,6 +137,7 @@ class Dashboard(
             }
         }
         sendButton.addActionListener { send() }
+        toBox.addActionListener { updatePlaceholder() }
         messageField.addActionListener { send() }
         stageBox.addActionListener { if (!updatingModel) service.select(stageBox.selectedIndex) }
         refreshButton.addActionListener { service.refresh() }
@@ -148,6 +154,7 @@ class Dashboard(
         syncStages(s)
         if (s.selectedIndex != shownSource) {
             shownSource = s.selectedIndex
+            showAllTimeline = false
             scrollToTopOnRender = true
             lastRendered = null
         }
@@ -159,9 +166,12 @@ class Dashboard(
         if (s.state != null && s.state != lastRendered) render(s.state)
         when {
             s.error != null -> showError(s.error)
-            s.live && s.loadedAt != null -> showStatus("Last updated ${CLOCK_FORMAT.format(s.loadedAt)}")
+            s.live && s.loadedAt != null -> showStatus(
+                (config.httpFromRepo?.let { "Board linked in $it · " } ?: "") + "Last updated ${CLOCK_FORMAT.format(s.loadedAt)}",
+            )
             s.live -> showStatus("Loading…")
-            !config.liveAvailable && !config.httpAvailable -> showStatus("Demo stages only. Set up the live board with ⚙.")
+            !config.liveAvailable && !config.httpAvailable ->
+                showStatus("Demo data. No board linked in this repo yet: add ${RepoBoardLink.LINK_FILE} or set the URL in ⚙.")
             else -> showStatus("Demo stage")
         }
     }
@@ -255,6 +265,7 @@ class Dashboard(
         content.removeAll()
 
         content.add(header(state))
+        if (snapshot.live && currentAgent.isBlank()) content.add(welcomeCard())
 
         state.openConflicts.forEach { c -> content.add(conflictBanner(c.claimant, c.currentOwner, c.overlappingPaths, c.taskId, c.reason)) }
 
@@ -269,6 +280,12 @@ class Dashboard(
             recent.forEach { p -> content.add(timelineRow(p, maxChars = RECENT_CHARS)) }
         }
 
+        if (state.timeline.isEmpty()) {
+            content.add(quietBoard())
+            finishRender()
+            return
+        }
+
         val agents = state.agents.values.sortedWith(compareBy({ it.agent != currentAgent }, { it.agent }))
         content.add(sectionTitle("Agents", agents.size))
         if (agents.isEmpty()) content.add(emptyNote("No agents yet. They appear when they post."))
@@ -280,8 +297,9 @@ class Dashboard(
         tasks.forEach { t -> content.add(taskCard(t)) }
 
         content.add(sectionTitle("Timeline", state.timeline.size))
-        if (state.timeline.isEmpty()) content.add(emptyNote("Nothing has happened yet."))
-        state.timeline.forEach { p ->
+        val hidden = if (showAllTimeline) 0 else (state.timeline.size - TIMELINE_LIMIT).coerceAtLeast(0)
+        if (hidden > 0) content.add(linkRow("Show $hidden earlier events") { showAllTimeline = true; render(state) })
+        state.timeline.drop(hidden).forEach { p ->
             content.add(
                 when {
                     p.event.type == EventType.HANDOFF -> handoffCard(p)
@@ -291,6 +309,10 @@ class Dashboard(
             )
         }
 
+        finishRender()
+    }
+
+    private fun finishRender() {
         content.revalidate()
         content.repaint()
         if (scrollToTopOnRender) {
@@ -305,7 +327,7 @@ class Dashboard(
     /** Title strip: name, live/demo pill, and a one-line summary a judge can read at a glance. */
     private fun header(state: BoardState): JComponent {
         val live = snapshot.live
-        // The tool window already shows "Agent Board", so the strip leads with the state, not the name again.
+        // The tool window already shows "BOB", so the strip leads with the state, not the name again.
         val pill: List<JComponent> = if (live) {
             listOf(StatusDot(BoardTheme.LIVE), gap(5), Chip("LIVE", BoardTheme.chipColors("task_claimed").first, BoardTheme.LIVE))
         } else {
@@ -324,6 +346,92 @@ class Dashboard(
         return row(*(pill + listOf(gap(8), summaryLabel, glue())).toTypedArray()).apply {
             border = JBUI.Borders.empty(8, 12, 4, 12)
         }
+    }
+
+    /**
+     * First run on a live board: one field to say who you are. Saves the agent id ("amit" → "amit-claude"),
+     * so the person never has to find Settings to start talking to the agents.
+     */
+    private fun welcomeCard(): JComponent {
+        val nameField = JBTextField(snapshot.suggestedName, 12).apply { emptyText.text = "your first name" }
+        val join = JButton("Join the board")
+        val error = plainLabel("").apply { foreground = BoardTheme.CONFLICT_TEXT; isVisible = false }
+        val submit = {
+            service.join(nameField.text)?.let { why -> error.text = why; error.isVisible = true }
+            Unit
+        }
+        join.addActionListener { submit() }
+        nameField.addActionListener { submit() }
+        return wrap(RoundedCard(BoardTheme.HANDOFF_BG, BoardTheme.HANDOFF_LINE, 2f).apply {
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+            border = JBUI.Borders.empty(10, 12)
+            add(row(otter("otter-wave", 44), gap(10), plainLabel("Welcome to BOB").apply { font = JBFont.label().asBold().biggerOn(2f) }))
+            add(text(
+                (config.httpFromRepo?.let { "You're connected to your team's board, found in $it. " } ?: "You're connected to the board. ") +
+                    "Tell the board who you are: your agent posts as name-claude, you post as name.",
+                BoardTheme.MUTED,
+            ).apply { border = JBUI.Borders.emptyTop(4) })
+            add(row(nameField, gap(6), join).padTop(8))
+            add(error.apply { border = JBUI.Borders.emptyTop(4) })
+        })
+    }
+
+    /** A live board with nothing on it yet: the sleeping otter and what will appear here. */
+    private fun quietBoard(): JComponent = JBPanel<JBPanel<*>>().apply {
+        layout = BoxLayout(this, BoxLayout.Y_AXIS)
+        isOpaque = false
+        alignmentX = Component.LEFT_ALIGNMENT
+        border = JBUI.Borders.empty(28, 16)
+        add(otter("otter-sleep", 96).apply { alignmentX = Component.CENTER_ALIGNMENT })
+        add(plainLabel("Quiet board").apply {
+            font = JBFont.label().asBold().biggerOn(2f)
+            alignmentX = Component.CENTER_ALIGNMENT
+            border = JBUI.Borders.emptyTop(10)
+        })
+        add(plainLabel(if (snapshot.live) "Claims, questions and handoffs show up here." else "Pick a demo stage above to see BOB at work.").muted().apply {
+            alignmentX = Component.CENTER_ALIGNMENT
+            border = JBUI.Borders.emptyTop(4)
+        })
+        if (snapshot.live) add(plainLabel("Say hi below, or ask your agent to claim a task.").muted().small().apply {
+            alignmentX = Component.CENTER_ALIGNMENT
+            border = JBUI.Borders.emptyTop(2)
+        })
+    }.fillWidth()
+
+    /** Points the composer at [agent] and puts the cursor in the message box. */
+    private fun messageTo(agent: String) {
+        if (!snapshot.live) return
+        if ((0 until toBox.itemCount).none { toBox.getItemAt(it) == agent }) toBox.addItem(agent)
+        toBox.selectedItem = agent
+        updatePlaceholder()
+        messageField.requestFocusInWindow()
+    }
+
+    private fun updatePlaceholder() {
+        val to = (toBox.selectedItem as? String)?.takeIf { it != EVERYONE }
+        messageField.emptyText.text = if (to != null) "Message $to… (Enter to send)" else "Message everyone… (Enter to send)"
+        messageField.repaint()
+    }
+
+    private fun linkLabel(text: String, onClick: () -> Unit): JBLabel = plainLabel(text).apply {
+        foreground = BoardTheme.ACCENT
+        font = JBFont.small().asBold()
+        cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+        addMouseListener(object : MouseAdapter() {
+            override fun mouseClicked(ev: MouseEvent) = onClick()
+        })
+    }
+
+    private fun linkRow(text: String, onClick: () -> Unit): JComponent =
+        row(linkLabel(text, onClick)).apply { border = JBUI.Borders.empty(2, 12, 6, 12) }
+
+    /** One of BOB's otters from the plugin's images, scaled to [height] (HiDPI-aware). */
+    private fun otter(name: String, height: Int): JBLabel {
+        val img = runCatching { ImageIO.read(javaClass.getResource("/images/$name.png")) }.getOrNull()
+            ?: return JBLabel()
+        val h = JBUI.scale(height)
+        val w = img.width * h / img.height
+        return JBLabel(ImageIcon(img.getScaledInstance(w, h, Image.SCALE_SMOOTH)))
     }
 
     private fun conflictBanner(claimant: String, owner: String, paths: List<String>, taskId: String?, reason: String): JComponent {
@@ -404,6 +512,14 @@ class Dashboard(
                 font = JBFont.small(); border = JBUI.Borders.empty(4, 34, 0, 0)
             })
         }
+        // One click from "who is here" to talking to them: picks the agent as recipient and focuses the message box.
+        if (snapshot.live) {
+            card.toolTipText = "Message $agent"
+            card.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+            card.addMouseListener(object : MouseAdapter() {
+                override fun mouseClicked(ev: MouseEvent) = messageTo(agent)
+            })
+        }
         return wrap(card)
     }
 
@@ -443,14 +559,28 @@ class Dashboard(
         head += gap(6); head += Chip(BoardTheme.chipText(e.type), cbg, cfg)
         if (e.type != EventType.MESSAGE) e.taskId?.let { head += gap(4); head += plainLabel(it).muted().small() }
         head += glue(); head += plainLabel(BoardTheme.ago(p.createdAt) + via(p)).muted().small()
-        return JBPanel<JBPanel<*>>().apply {
+        val forYou = currentAgent.isNotBlank() && e.agent != currentAgent && e.agent != humanSender &&
+            (e.toAgent == currentAgent || e.toAgent == humanSender)
+        if (!forYou) {
+            return JBPanel<JBPanel<*>>().apply {
+                layout = BoxLayout(this, BoxLayout.Y_AXIS)
+                border = JBUI.Borders.empty(6, 10, 4, 10)
+                isOpaque = false
+                alignmentX = Component.LEFT_ALIGNMENT
+                add(row(*head.toTypedArray()))
+                if (body.isNotBlank()) add(text(body).apply { border = JBUI.Borders.empty(3, 26, 0, 0) })
+            }.fillWidth()
+        }
+        // Addressed to you or your agent: tinted, with a "for you" tag and a one-click reply.
+        head.add(head.size - 2, gap(4))
+        head.add(head.size - 2, Chip("for you", BoardTheme.chipColors("task_claimed").first, BoardTheme.ACCENT))
+        return wrap(RoundedCard(BoardTheme.FOR_YOU_BG, BoardTheme.ACCENT, 1f).apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
-            border = JBUI.Borders.empty(6, 10, 4, 10)
-            isOpaque = false
-            alignmentX = Component.LEFT_ALIGNMENT
+            border = JBUI.Borders.empty(7, 8, 6, 8)
             add(row(*head.toTypedArray()))
             if (body.isNotBlank()) add(text(body).apply { border = JBUI.Borders.empty(3, 26, 0, 0) })
-        }.fillWidth()
+            if (snapshot.live) add(row(gap(26), linkLabel("Reply to ${e.agent}") { messageTo(e.agent) }).padTop(4))
+        })
     }
 
     /** "[auto] got your message" acknowledgements: one quiet line. */
@@ -563,6 +693,7 @@ class Dashboard(
     private companion object {
         const val RECENT_COUNT = 3
         const val RECENT_CHARS = 180
+        const val TIMELINE_LIMIT = 15
         const val EVERYONE = "Everyone"
         val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault())
         val CLOCK_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault())

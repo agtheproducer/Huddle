@@ -25,36 +25,43 @@ import kotlin.math.absoluteValue
  * painted building blocks (avatar, chip, rounded card). One place for a designer's palette.
  */
 object BoardTheme {
-    // ---- semantic colors ----
-    val ACCENT = JBColor(Color(0x3574F0), Color(0x548AF7))
-    val LIVE = JBColor(Color(0x208A3C), Color(0x5FB865))
-    val MUTED = JBColor(Color(0x6C707E), Color(0x9DA0A8))
-    val CARD_BG = JBColor(Color(0xF7F8FA), Color(0x2B2D30))
-    val CARD_LINE = JBColor(Color(0xE4E6EB), Color(0x393B40))
+    // ---- semantic colors: BOB's otter palette (teal water, charcoal fur, cream belly, orange ball) ----
+    /** Otter teal: "you", links, focus. */
+    val ACCENT = JBColor(Color(0x0B5357), Color(0x5BB0B1))
+    val LIVE = JBColor(Color(0x0E7C66), Color(0x4CC2A4))
+    val MUTED = JBColor(Color(0x6B6D70), Color(0xA2A4A8))
+    /** Warm paper cards, so the panel reads as BOB and not as a generic list. */
+    val CARD_BG = JBColor(Color(0xF8F6F2), Color(0x2B2D30))
+    val CARD_LINE = JBColor(Color(0xE6E1D8), Color(0x3A3C40))
 
-    val CONFLICT_BG = JBColor(Color(0xFFF4E6), Color(0x45321F))
-    val CONFLICT_LINE = JBColor(Color(0xF0A04B), Color(0xC97A2B))
-    val CONFLICT_TEXT = JBColor(Color(0x9A4F07), Color(0xF2B46B))
+    /** Conflicts use the otter's orange ball: impossible to miss, never alarm-red. */
+    val CONFLICT_BG = JBColor(Color(0xFFF1E4), Color(0x47301C))
+    val CONFLICT_LINE = JBColor(Color(0xE06A00), Color(0xE9893A))
+    val CONFLICT_TEXT = JBColor(Color(0xA34C00), Color(0xF5B06D))
 
-    val HANDOFF_BG = JBColor(Color(0xEDF3FF), Color(0x25324D))
-    val HANDOFF_LINE = JBColor(Color(0xA9C3F7), Color(0x3E5A92))
+    /** Handoffs and the welcome card: cream belly with a teal outline. */
+    val HANDOFF_BG = JBColor(Color(0xF2EDE4), Color(0x263638))
+    val HANDOFF_LINE = JBColor(Color(0x7FAFAE), Color(0x4F8E8F))
+
+    /** A message addressed to you (or to your agent): a soft teal tint so it stands out in the feed. */
+    val FOR_YOU_BG = JBColor(Color(0xE7F1F0), Color(0x1F3436))
 
     /** Chip colors per event type: (background, text). */
-    private val CLAIM = JBColor(Color(0xE6F4EA), Color(0x29402F)) to JBColor(Color(0x1E7B34), Color(0x8BD49B))
-    private val MESSAGE = JBColor(Color(0xEEF0F4), Color(0x34363B)) to JBColor(Color(0x4A4E59), Color(0xC3C6CE))
-    private val HANDOFF = JBColor(Color(0xE3ECFF), Color(0x2A3A5C)) to JBColor(Color(0x2F5FD0), Color(0x9DBCFF))
-    private val CONFLICT = JBColor(Color(0xFFE9D2), Color(0x4D3520)) to JBColor(Color(0xA4530A), Color(0xF4B36A))
-    private val DONE = JBColor(Color(0xEDE7FA), Color(0x3A3150)) to JBColor(Color(0x6A43C2), Color(0xC3A8FF))
-    private val NEUTRAL = JBColor(Color(0xEEF0F4), Color(0x34363B)) to JBColor(Color(0x6C707E), Color(0xA7AAB2))
+    private val CLAIM = JBColor(Color(0xE1EFEE), Color(0x213B3C)) to JBColor(Color(0x0B5357), Color(0x8FD3CF))
+    private val MESSAGE = JBColor(Color(0xEFEDE9), Color(0x34363B)) to JBColor(Color(0x48494B), Color(0xC3C6CE))
+    private val HANDOFF = JBColor(Color(0xECE5DA), Color(0x3B3833)) to JBColor(Color(0x48494B), Color(0xE5DCCB))
+    private val CONFLICT = JBColor(Color(0xFFE3C9), Color(0x4D3520)) to JBColor(Color(0xA34C00), Color(0xF5B06D))
+    private val DONE = JBColor(Color(0xE9E9EA), Color(0x36383B)) to JBColor(Color(0x48494B), Color(0xC9CACC))
+    private val NEUTRAL = JBColor(Color(0xEFEDE9), Color(0x34363B)) to JBColor(Color(0x6B6D70), Color(0xA7AAB2))
 
-    /** Person colors: an agent shares its person's color (julieta and julieta-claude match). */
+    /** Person colors, drawn from the otters: an agent shares its person's color (julieta and julieta-claude match). */
     private val PEOPLE = listOf(
-        JBColor(Color(0x3574F0), Color(0x548AF7)), // blue
-        JBColor(Color(0xD6457C), Color(0xE66E9A)), // pink
-        JBColor(Color(0x1E8E6E), Color(0x3FB68E)), // green
-        JBColor(Color(0xB65F0E), Color(0xE08A3A)), // amber
-        JBColor(Color(0x7A4CD6), Color(0x9F7AF0)), // violet
-        JBColor(Color(0x0F8EA8), Color(0x3DB4CC)), // teal
+        JBColor(Color(0x0B5357), Color(0x5BB0B1)), // teal
+        JBColor(Color(0xC25A00), Color(0xE9893A)), // orange
+        JBColor(Color(0x3C6E9E), Color(0x7FAEDB)), // jersey blue
+        JBColor(Color(0x6B4A35), Color(0xC49A7C)), // otter brown
+        JBColor(Color(0x48494B), Color(0xB9BBBE)), // charcoal
+        JBColor(Color(0x7A4C7A), Color(0xC48FC4)), // plum
     )
 
     fun personOf(agent: String) = agent.substringBefore('-').lowercase()
