@@ -40,7 +40,7 @@ intellijPlatform {
     pluginConfiguration {
         id = "com.agentboard.plugin"
         name = "BOB - Board of Bots"
-        version = "0.2.1"
+        version = "0.2.2"
         ideaVersion {
             // Built against 2026.2 and verified on 2026.2 and 2026.3 (below): claim only what was checked.
             sinceBuild = "262"

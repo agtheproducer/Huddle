@@ -76,6 +76,8 @@ class Dashboard(
         toolTipText = "BOB settings"
         putClientProperty("JButton.buttonType", "square")
     }
+    private var signedInLogin: String? = null
+    private var owners: Map<String, String> = emptyMap()
     private var accountBoard = ""
     private var accountCheckAt = 0L
     private var accountRevision = 0L
@@ -92,6 +94,11 @@ class Dashboard(
     }
 
     private fun showAccount(login: String?) {
+        if (signedInLogin != login) {
+            signedInLogin = login
+            lastRendered = null
+            snapshot.state?.let { render(it) }
+        }
         accountButton.text = login?.let { "✓ @$it" } ?: "GitHub sign-in"
         accountButton.toolTipText = login?.let { "Signed in as @$it. Click to switch accounts." } ?: "Continue with GitHub"
     }
@@ -260,13 +267,7 @@ class Dashboard(
         val live = snapshot.live
         listOf(toBox, messageField, sendButton).forEach { it.isEnabled = live && !sending }
         autoReplyBox.isEnabled = live && currentAgent.isNotBlank()
-        autoReplyBox.toolTipText = when {
-            currentAgent.isBlank() -> "Set your agent id in ⚙ to use auto-reply."
-            BoardSettings.get().state.autoReplyMayEdit -> "Let $currentAgent answer and work on messages addressed to it, by running Claude Code " +
-                "in the background. It may edit, build and push (allowed in ⚙). Each answer spends Claude credits."
-            else -> "Let $currentAgent answer messages addressed to it, by running Claude Code in the background. " +
-                "It only reads and answers; allow code changes in ⚙. Each answer spends Claude credits."
-        }
+        autoReplyBox.toolTipText = "Answer messages to your primary agent and linked Codex agent (GPT-6.2 Sol). Each run uses your account."
         senderLabel.text = if (live) "You post as \"$humanSender\"" else "Switch to HTTP or Live to message the agents."
     }
 
@@ -296,24 +297,35 @@ class Dashboard(
                     messageField.text = ""
                     showStatus("Sent to ${to ?: "everyone"}")
                 },
-                onFailure = { showError("Could not send: ${it.message ?: it.javaClass.simpleName}") },
+                onFailure = {
+                    val detail = it.message ?: it.javaClass.simpleName
+                    val message = when {
+                        "401" in detail -> "Sign in to BOB with GitHub, then press Send again."
+                        "403" in detail -> "Sign in with the GitHub account that owns $humanSender, then resend."
+                        else -> detail
+                    }
+                    showError("Could not send: $message")
+                },
             )
             messageField.requestFocusInWindow()
         }
     }
 
     private fun showStatus(message: String) {
+        statusLabel.toolTipText = message
         statusLabel.text = message
         statusLabel.foreground = JBColor.GRAY
     }
 
     private fun showError(message: String) {
+        statusLabel.toolTipText = message
         statusLabel.text = message
         statusLabel.foreground = JBColor.RED
     }
 
     /** Rebuilds every section from [state]. Call on the UI thread. */
     fun render(state: BoardState) {
+        owners = if (snapshot.sourceNames[snapshot.selectedIndex] == HttpSource.LABEL) state.verifiedOwners() else emptyMap()
         lastRendered = state
         updateRecipients(state)
         renderChat(state)
@@ -333,7 +345,7 @@ class Dashboard(
             return
         }
 
-        val agents = state.agents.values.sortedWith(compareBy({ it.agent != currentAgent }, { it.agent }))
+        val agents = state.agents.values.sortedWith(compareBy({ !isMine(it.agent) }, { it.agent }))
         content.add(sectionTitle("Agents", agents.size))
         if (agents.isEmpty()) content.add(emptyNote("No agents yet. They appear when they post."))
         agents.forEach { a -> content.add(agentCard(state, a.agent, a.activeTasks, a.branch, a.lastSeen)) }
@@ -389,13 +401,13 @@ class Dashboard(
         return gap < 5
     }
 
-    private fun isMine(agent: String) = currentAgent.isNotBlank() && (agent == currentAgent || agent == humanSender)
+    private fun isMine(agent: String?) = ownsAgent(agent, currentAgent, signedInLogin, owners)
 
     /** A chat bubble: yours on the right in teal, everyone else's on the left after their avatar. */
     private fun bubble(p: PostedEvent, grouped: Boolean): JComponent {
         val e = p.event
         val mine = isMine(e.agent)
-        val forYou = !mine && currentAgent.isNotBlank() && (e.toAgent == currentAgent || e.toAgent == humanSender)
+        val forYou = !mine && currentAgent.isNotBlank() && isMine(e.toAgent)
         val bg = when { mine -> BoardTheme.MINE_BG; forYou -> BoardTheme.FOR_YOU_BG; else -> BoardTheme.CARD_BG }
         val line = when { mine -> BoardTheme.MINE_BG; forYou -> BoardTheme.ACCENT; else -> BoardTheme.CARD_LINE }
         val meta: Color = if (mine) BoardTheme.MINE_META else BoardTheme.MUTED
@@ -625,13 +637,23 @@ class Dashboard(
     }
 
     private fun agentCard(state: BoardState, agent: String, active: List<String>, branch: String?, lastSeen: String): JComponent {
-        val mine = agent == currentAgent
+        val mine = isMine(agent)
         val card = RoundedCard(line = if (mine) BoardTheme.ACCENT else BoardTheme.CARD_LINE, lineWidth = if (mine) 2f else 1f).apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             border = JBUI.Borders.empty(8, 10)
             val tags = mutableListOf<JComponent>(Avatar(agent, 26), gap(8), nameLabel(agent))
             BoardTheme.providerOf(agent)?.let { tags += gap(6); tags += Chip(it, BoardTheme.chipColors("other").first, BoardTheme.chipColors("other").second) }
-            if (mine) { tags += gap(4); tags += Chip("you", BoardTheme.chipColors("handoff").first, BoardTheme.ACCENT) }
+            val login = signedInLogin
+            if (agent == currentAgent && login != null && agent !in owners &&
+                snapshot.sourceNames[snapshot.selectedIndex] == HttpSource.LABEL) {
+                tags += gap(4)
+                tags += linkLabel("Link to @$login") {
+                    service.send("Linked $agent to @$login.", null, agent) { result ->
+                        result.exceptionOrNull()?.let { showError("Could not link $agent: ${it.message}") }
+                    }
+                }
+            }
+            if (mine) { tags += gap(4); tags += Chip(if (agent == humanSender) "you" else "your agent", BoardTheme.chipColors("handoff").first, BoardTheme.ACCENT) }
             tags += glue()
             tags += plainLabel(BoardTheme.ago(lastSeen)).muted().small()
             add(row(*tags.toTypedArray()))
@@ -665,7 +687,7 @@ class Dashboard(
     }
 
     private fun taskCard(t: TaskState): JComponent {
-        val mine = t.owner == currentAgent
+        val mine = isMine(t.owner)
         val status = t.status.name.lowercase()
         val (sbg, sfg) = BoardTheme.statusChip(status)
         val card = RoundedCard(line = if (mine) BoardTheme.ACCENT else BoardTheme.CARD_LINE, lineWidth = if (mine) 2f else 1f).apply {
@@ -700,8 +722,8 @@ class Dashboard(
         head += gap(6); head += Chip(BoardTheme.chipText(e.type), cbg, cfg)
         if (e.type != EventType.MESSAGE) e.taskId?.let { head += gap(4); head += plainLabel(it).muted().small() }
         head += glue(); head += plainLabel(BoardTheme.ago(p.createdAt) + via(p)).muted().small()
-        val forYou = currentAgent.isNotBlank() && e.agent != currentAgent && e.agent != humanSender &&
-            (e.toAgent == currentAgent || e.toAgent == humanSender)
+        val forYou = currentAgent.isNotBlank() && !isMine(e.agent) &&
+            isMine(e.toAgent)
         if (!forYou) {
             return JBPanel<JBPanel<*>>().apply {
                 layout = BoxLayout(this, BoxLayout.Y_AXIS)

@@ -31,6 +31,8 @@ class AutoReply(
     /** Highest comment id already handed to a run (or seen when auto-reply was switched on). */
     @Volatile private var lastHandled = 0L
     @Volatile private var running: Process? = null
+    @Volatile private var epoch = 0L
+    private var busy = false
     @Volatile private var baselinePending = false
 
     private fun baseline(state: BoardState): Long {
@@ -46,6 +48,7 @@ class AutoReply(
      * so a message sent just before ticking the box (or before an IDE restart) is not lost.
      */
     fun setEnabled(on: Boolean, current: BoardState?) {
+        epoch++
         enabled = on
         if (on) {
             // No board loaded yet: set the baseline on the first load instead, never answer all history.
@@ -59,6 +62,7 @@ class AutoReply(
     }
 
     fun dispose() {
+        epoch++
         enabled = false
         running?.destroy()
     }
@@ -66,14 +70,15 @@ class AutoReply(
     /** Called on the UI thread after each board load. Starts a run when new messages are addressed to [config].agent. */
     fun onBoard(state: BoardState, config: BoardConfig, source: BoardSource) {
         val agent = config.agent
-        if (!enabled || agent.isBlank() || running != null) return
+        if (!enabled || agent.isBlank() || busy) return
         if (baselinePending) {
             baselinePending = false
             lastHandled = baseline(state)
         }
         // Wake for the agent itself, and for its human ("amit-claude" → "amit"): teammates' agents often
         // address the person ("Amit, please claim calc-frontend"), and that work is the agent's to pick up.
-        val fresh = wakeEvents(state, agent, lastHandled)
+        val login = if (source is HttpSource) GithubSignIn.login(config.httpUrl) else null
+        val fresh = routedEvents(state, agent, lastHandled, login)
         if (fresh.isEmpty()) return
 
         val now = System.currentTimeMillis()
@@ -84,7 +89,9 @@ class AutoReply(
         }
         recentRuns.addLast(now)
         lastHandled = fresh.maxOf { it.commentId }
-        start(fresh, config, source)
+        val recipient = fresh.first().event.toAgent
+        val target = if (recipient == humanOf(agent)) agent else requireNotNull(recipient)
+        start(fresh, config.copy(agent = target, httpUrl = if (source is HttpSource) config.httpUrl else ""), source)
     }
 
     private fun start(messages: List<PostedEvent>, config: BoardConfig, source: BoardSource) {
@@ -102,16 +109,20 @@ class AutoReply(
         val senders = messages.map { it.event.agent }.distinct()
         onStatus("$agent is answering ${senders.joinToString()}…")
 
+        busy = true
+        val startedEpoch = epoch
         ApplicationManager.getApplication().executeOnPooledThread {
             // A quick visible ack, so the other side knows a reply is coming (real replies take ~10–30 s).
-            runCatching {
-                val client = source.clientAs(agent)
-                senders.forEach { client?.sendMessage("$ACK_PREFIX $agent got your message and is on it.", toAgent = it) }
+            val result = runCatching {
+                val client = requireNotNull(source.clientAs(agent))
+                senders.forEach { client.sendMessage("$ACK_PREFIX $agent got your message and is on it.", toAgent = it) }
+                check(epoch == startedEpoch) { "Auto-reply was switched off" }
+                runAgent(messages, config, workDir, launcher, startedEpoch)
             }
-
-            val result = runCatching { runClaude(messages, config, workDir, launcher) }
             running = null
             ApplicationManager.getApplication().invokeLater {
+                busy = false
+                if (epoch != startedEpoch || project.isDisposed) return@invokeLater
                 result.fold(
                     onSuccess = { (code, tail) ->
                         if (code == 0) onStatus(if (enabled) "Auto-reply on: $agent answered. Waiting for messages" else null)
@@ -121,8 +132,8 @@ class AutoReply(
                         }
                     },
                     onFailure = {
-                        LOG.warn("Auto-reply could not start Claude Code", it)
-                        onStatus("Auto-reply could not start Claude Code: ${it.message}")
+                        LOG.warn("Auto-reply could not start $agent", it)
+                        onStatus("Auto-reply could not start $agent: ${it.message}")
                     },
                 )
                 onRunFinished()
@@ -130,44 +141,68 @@ class AutoReply(
         }
     }
 
-    /** Runs `claude -p` through the user's login shell, so PATH (Homebrew, npm, nvm) is the same as in Terminal. */
-    private fun runClaude(messages: List<PostedEvent>, config: BoardConfig, workDir: File, launcher: File): Pair<Int, String> {
-        val mcpConfig = File.createTempFile("agent-board-mcp", ".json").apply { deleteOnExit() }
-        mcpConfig.writeText(mcpConfigJson(config, launcher))
-
-        val pb = ProcessBuilder(
-            "/bin/zsh", "-ilc",
-            "claude -p \"\$AB_PROMPT\" --mcp-config \"\$AB_MCP\" --strict-mcp-config " +
-                "--allowedTools \"\$AB_TOOLS\" --disallowedTools \"\$AB_DENY\" --max-turns $MAX_TURNS --output-format text",
-        ).directory(workDir).redirectErrorStream(true)
-        pb.environment().apply {
-            remove("BOB_SESSION")
-            remove("BOB_SESSION_URL")
-            if (config.httpAvailable) GithubSignIn.session(config.httpUrl)?.let {
-                put("BOB_SESSION", it)
-                put("BOB_SESSION_URL", config.httpUrl)
+    private fun runAgent(messages: List<PostedEvent>, config: BoardConfig, workDir: File, launcher: File, startedEpoch: Long): Pair<Int, String> {
+        val codex = isCodex(config.agent)
+        val mcpConfig = if (codex) null else File.createTempFile("agent-board-mcp", ".json").apply {
+            writeText(mcpConfigJson(config, launcher))
+        }
+        try {
+            val args = if (codex) {
+                val sandbox = if (mayEdit()) "workspace-write" else "read-only"
+                listOf("codex", "exec", "--model", "gpt-6.2-sol", "--sandbox", sandbox, "--ephemeral",
+                    "--ignore-user-config", "-c", "mcp_servers.bob.command=" + json(launcher.absolutePath),
+                    "-c", "mcp_servers.bob.env_vars=[\"AGENT_BOARD_AGENT\",\"AGENT_BOARD_HTTP_URL\",\"BOB_SESSION_URL\",\"BOB_SESSION\",\"JAVA_HOME\",\"AGENT_BOARD_REPO\",\"AGENT_BOARD_ISSUE\",\"GITHUB_TOKEN\"]",
+                    "-c", "mcp_servers.bob.required=true",
+                    "-c", "mcp_servers.bob.enabled_tools=" + (if (mayEdit()) WORK_BOARD_TOOLS else REPLY_BOARD_TOOLS)
+                        .joinToString(",", "[", "]") { json(it) },
+                    "-c", "mcp_servers.bob.default_tools_approval_mode=\"approve\"",
+                    "-c", "shell_environment_policy.inherit=\"none\"", "-")
+            } else listOf("claude", "-p", prompt(messages, config), "--mcp-config", requireNotNull(mcpConfig).absolutePath,
+                "--strict-mcp-config", "--allowedTools", if (mayEdit()) EDIT_TOOLS else ANSWER_TOOLS,
+                "--disallowedTools", DENIED_TOOLS, "--max-turns", MAX_TURNS.toString(), "--output-format", "text")
+            val pb = ProcessBuilder(listOf("/bin/zsh", "-ilc", "exec \"\$@\"", "bob") + args)
+                .directory(workDir).redirectErrorStream(true)
+            pb.environment().apply {
+                remove("BOB_SESSION")
+                remove("BOB_SESSION_URL")
+                if (config.httpAvailable) GithubSignIn.session(config.httpUrl)?.let {
+                    put("BOB_SESSION", it)
+                    put("BOB_SESSION_URL", config.httpUrl)
+                }
+                if (codex) {
+                    remove("GITHUB_TOKEN")
+                    remove("AGENT_BOARD_HTTP_URL")
+                    put("AGENT_BOARD_AGENT", config.agent)
+                    put("JAVA_HOME", System.getenv("JAVA_HOME") ?: System.getProperty("java.home"))
+                    if (config.httpAvailable) put("AGENT_BOARD_HTTP_URL", config.httpUrl)
+                    else putAll(config.asEnvironment())
+                }
             }
-            put("AB_PROMPT", prompt(messages, config))
-            put("AB_MCP", mcpConfig.absolutePath)
-            put("AB_TOOLS", if (mayEdit()) EDIT_TOOLS else ANSWER_TOOLS)
-            put("AB_DENY", DENIED_TOOLS)
-        }
-        val process = pb.start()
-        running = process
-        process.outputStream.close()
-        val output = StringBuilder()
-        process.inputStream.bufferedReader().useLines { lines ->
-            lines.forEach {
-                output.appendLine(it)
-                if (output.length > 8_000) output.delete(0, output.length - 4_000)
+            val process = pb.start()
+            running = process
+            if (epoch != startedEpoch) {
+                process.destroyForcibly()
+                error("Auto-reply was switched off")
             }
+            process.outputStream.bufferedWriter().use { if (codex) it.write(prompt(messages, config)) }
+            val output = StringBuilder()
+            val drain = Thread.ofVirtual().start {
+                process.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach {
+                        output.appendLine(it)
+                        if (output.length > 8_000) output.delete(0, output.length - 4_000)
+                    }
+                }
+            }
+            if (!process.waitFor(RUN_TIMEOUT_MIN, TimeUnit.MINUTES)) {
+                process.destroyForcibly()
+                return -1 to "timed out after $RUN_TIMEOUT_MIN min"
+            }
+            drain.join()
+            return process.exitValue() to output.toString().takeLast(2_000)
+        } finally {
+            mcpConfig?.delete()
         }
-        if (!process.waitFor(RUN_TIMEOUT_MIN, TimeUnit.MINUTES)) {
-            process.destroyForcibly()
-            return -1 to "timed out after $RUN_TIMEOUT_MIN min"
-        }
-        mcpConfig.delete()
-        return process.exitValue() to output.toString().takeLast(2_000)
     }
 
     private fun mayEdit(): Boolean = BoardSettings.get().state.autoReplyMayEdit
@@ -250,6 +285,22 @@ class AutoReply(
             }
         }
 
+        internal fun isCodex(name: String) = name == "codex" || name.endsWith("-codex")
+
+        /** Batch consecutive events for a single engine so advancing the cursor cannot skip the other inbox. */
+        internal fun routedEvents(state: BoardState, primary: String, after: Long, login: String?): List<PostedEvent> {
+            val owners = state.verifiedOwners()
+            val primaryEvents = if (ownsAgent(primary, primary, login, owners)) wakeEvents(state, primary, after) else emptyList()
+            val secondary = "${humanOf(primary)}-codex"
+            if (primary == secondary || login == null || !login.equals(owners[secondary], ignoreCase = true)) return primaryEvents
+            val secondaryEvents = wakeEvents(state, secondary, after).filter { it.event.toAgent == secondary }
+            val ordered = (primaryEvents + secondaryEvents).sortedBy { it.commentId }
+            val codexFirst = ordered.firstOrNull()?.event?.toAgent == secondary
+            return ordered.takeWhile { (it.event.toAgent == secondary) == codexFirst }
+        }
+
+        private val REPLY_BOARD_TOOLS = listOf("get_board", "get_messages", "send_message")
+        private val WORK_BOARD_TOOLS = REPLY_BOARD_TOOLS + listOf("claim_task", "release_task", "handoff_task")
         private val LOG = Logger.getInstance(AutoReply::class.java)
         private val WAKE_TYPES = setOf(EventType.MESSAGE, EventType.HANDOFF, EventType.CONFLICT)
         private const val ACK_PREFIX = "[auto]"

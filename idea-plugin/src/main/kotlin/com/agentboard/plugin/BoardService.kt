@@ -171,10 +171,10 @@ class BoardService(private val project: Project, private val cs: CoroutineScope)
         if (on) {
             if (agent.isBlank()) return "Set your agent id in ⚙ to use auto-reply."
             if (!isLive) return "Auto-reply needs the live board."
-            val holder = AUTO_REPLY_OWNERS.putIfAbsent(agent, project)
+            val holder = AUTO_REPLY_OWNERS.putIfAbsent(AutoReply.humanOf(agent), project)
             if (holder != null && holder != project) return "Auto-reply for $agent is already on in project ${holder.name}."
         } else {
-            AUTO_REPLY_OWNERS.remove(agent, project)
+            AUTO_REPLY_OWNERS.remove(AutoReply.humanOf(agent), project)
         }
         autoReply.setEnabled(on, state)
         publish()
@@ -227,7 +227,7 @@ class BoardService(private val project: Project, private val cs: CoroutineScope)
         val oldAgent = config.agent
         config = BoardConfig.current().withRepoLink(repoLink)
         if (oldAgent != config.agent && autoReply.enabled) {
-            AUTO_REPLY_OWNERS.remove(oldAgent, project)
+            AUTO_REPLY_OWNERS.remove(AutoReply.humanOf(oldAgent), project)
             autoReply.setEnabled(false, null)
         }
         sourceNames = namesFor(config)
@@ -244,7 +244,7 @@ class BoardService(private val project: Project, private val cs: CoroutineScope)
     }
 
     override fun dispose() {
-        AUTO_REPLY_OWNERS.remove(config.agent, project)
+        AUTO_REPLY_OWNERS.remove(AutoReply.humanOf(config.agent), project)
         autoReply.dispose()
     }
 

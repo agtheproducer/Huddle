@@ -13,6 +13,30 @@ class AutoReplyWakeTest {
         AutoReply.wakeEvents(client(agent).board(), agent, after).map { it.event.message }
 
     @Test
+    fun `a verified second agent receives its own batch in board order`() {
+        val codex = "julieta-codex"
+        val claude = "julieta-claude"
+        client(codex).sendMessage("Joined")
+        client("amit").sendMessage("First", toAgent = codex)
+        client("amit").sendMessage("Second", toAgent = "julieta")
+        client("amit").sendMessage("Third", toAgent = codex)
+        val raw = client(claude).board()
+        val board = raw.copy(timeline = raw.timeline.map {
+            if (it.event.agent == codex) it.copy(verifiedLogin = "Julieta-LL") else it
+        })
+        val first = AutoReply.routedEvents(board, claude, 0, "julieta-ll").single()
+        assertEquals("First", first.event.message)
+        val second = AutoReply.routedEvents(board, claude, first.commentId, "julieta-ll").single()
+        assertEquals("Second", second.event.message)
+        assertEquals("Third", AutoReply.routedEvents(board, claude, second.commentId, "julieta-ll").single().event.message)
+        assertEquals(listOf(second), AutoReply.routedEvents(board, claude, 0, "someone-else"))
+        assertEquals(listOf(second), AutoReply.routedEvents(board, claude, 0, null))
+        assertEquals(false, ownsAgent(codex, claude, "someone-else", board.verifiedOwners()))
+        assertEquals(true, ownsAgent(codex, claude, "julieta-ll", board.verifiedOwners()))
+        assertEquals(true, AutoReply.isCodex(first.event.toAgent!!))
+    }
+
+    @Test
     fun `wakes for messages addressed to the agent`() {
         client("amit-claude").sendMessage("What did you build?", toAgent = "julieta-claude")
         assertEquals(listOf("What did you build?"), woken())

@@ -13,8 +13,10 @@ import javax.swing.SwingUtilities
 
 internal object GithubSignIn {
     // A board session belongs to this IDE run and board origin. Closing the IDE discards it.
-    private val sessions = java.util.concurrent.ConcurrentHashMap<String, String>()
-    fun session(board: String): String? = sessions[board.trimEnd('/')]
+    private data class Account(val session: String, val login: String)
+    private val sessions = java.util.concurrent.ConcurrentHashMap<String, Account>()
+    fun login(board: String): String? = sessions[board.trimEnd('/')]?.login
+    fun session(board: String): String? = sessions[board.trimEnd('/')]?.session
 
     fun currentLogin(raw: String): String? {
         val board = BoardSignIn.endpoint(raw)
@@ -43,7 +45,7 @@ internal object GithubSignIn {
                     BoardSignIn.exchange(board, credential)
                 }
                 login = result.getValue("login").jsonPrimitive.content
-                sessions[board] = result.getValue("session").jsonPrimitive.content
+                sessions[board] = Account(result.getValue("session").jsonPrimitive.content, login)
             }
             override fun onSuccess() {
                 if (login.isNotEmpty() && !project.isDisposed) {
